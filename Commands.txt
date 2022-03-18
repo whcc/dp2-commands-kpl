@@ -1,0 +1,5942 @@
+IF 0
+{
+	THIS FILE IS A SET OF STANDARD COMMANDS THAT CAN BE USED FOR IMPORTING COMMANDS INTO
+	DP2 FROM OTHER SYSTEMS.  SIMPLY INCLUDE THIS FILE AS THE FIRST LINE IN YOUR FILE OF
+	COMMANDS TO IMPORT AND THEN ALL OF THE SUBROUTINES DEFINED IN THIS FILE WILL BE AT
+	YOUR DISPOSAL.
+
+	Example:
+			Include: Cmds;
+			UpdateOrder( ~Test~,CustomerID,~Apeland Studios~ );	// Change the CustomerID for Order Text to Apeland Studios
+
+	FEED THE ABOVE FILE TO THE DIRECTORY YOU HAVE ASKED DP2 TO WATCH (VIA IMPORT/COMMANDS ON THE
+	TASK BAR AND IT WILL EXECUTE IN THE BACKGROUND.  IF YOU WOULD LIKE TO INVENT YOUR ON COMMANDS 
+	THEN WE WOULD SUGGEST THAT YOU CREATE YOUR OWN FILE AND INCLUDE IT, SO THAT KODAK CAN CHANGE
+	THIS FILE AS NEEDED IN FUTURE VERSIONS WITHOUT DESTROYING YOUR ADDITIONS.
+
+	Example:	
+			Include: ~<$App.Scripts>\Cmds.txt~;		// Get Cmds.txt from the DP2 shared area
+			Include: ~<$App.Scripts>\MyCmds.txt~;	// PUT THIS FILE IN THE SCRIPTS FOLDER OF YOUR SHARED DATA DIRECTORY
+			MyFavoriteCmd( ~Arg1~,~Arg2~ );
+
+	THE FOLLOWING ARE THE PROTOTYPES FOR THE SUBROUTINES DEFINED IN THIS FILE
+
+	-- DATABASE COMMANDS 
+
+	NUMERIC BeginTransaction()         
+	NUMERIC CommitTransaction()         	
+	NUMERIC RollBackTransaction()
+	NUMERIC DoSQL( SQLStatement )  
+	NUMERIC Update( Table,PrimaryKey,<OptionalFieldValueArgs> )
+
+	-- MISC COMMANDS 
+	       
+	NUMERIC Success( Msg )         		
+	NUMERIC WantExitOnFailure(Value)			// INDICATE WHETHER TO TERMINATE ON FAILURE.  DEFAULT IS TRUE
+	NUMERIC Failure( msg )						// CALLED WHEN AN OPERATION COMPLETES WITH ERROR
+	NUMERIC Info( Msg )							// LOG ANY MSG AND DISPLAY IT IN COMMAND IMPORTER WINDOW
+	NUMERIC UserMessage( Msg )					// DISPLAY ANY MESSAGE IN THE COMMAND IMPORTER WINDOW
+	NUMERIC SetupProgressBar( Min,Max,Step )	// INITIALIZE THE PROGRESS BAR IN THE COMMAND IMPORTER WINDOW
+	NUMERIC StepProgressBar()					// STEP THE PROGRESS BAR IN THE COMMAND IMPORTER WINDOW
+	NUMERIC Stopping()							// Returns TRUE if the User wants to terminate the running script
+	
+	-- PRINTING COMMANDS
+
+	STR     GetUniqueJobID()					// GET A UNIQUE JOBID FOR THE JOBQUEUE TABLE
+	NUMERIC InsertJob( BatchID,OrderID,OrderSequence,OrderItemID,OrderItemQty,OrderItemSequence,JobPath,QueueName,PrinterName,Priority )         // INSERT A JOBFILE IN THE JOBQUEUE
+	NUMERIC PrintBatch( BatchID )
+	NUMERIC BeginPrintBatch()
+	NUMERIC CommitPrintBatch()
+	NUMERIC RollBackPrintBatch()
+	NUMERIC DeletePrintBatch( BatchID )
+	NUMERIC RunJob( JobPath,Quantity,OrderID,Item,PreviewPath,Priority,Owner,PrintStatus )
+	NUMERIC RunJobsForOrder( OrderID,PrintStatus )
+	NUMERIC AddJobToDatabase( BatchID,OrderID,OrderItemID,OrderItemQty,OrderItemSequence,JobPath,QueueName,Priority )
+	NUMERIC CreateJobQueuePath( OrderID,ItemID,PrinterQueue,&JobPath )
+
+	-- ORDER COMMANDS
+	
+	NUMERIC AddOrder( OrderID,CustomerID,ImagesOrderID,BatchID,BatchSeq,Status,Type,OrderDate,ShipDate,Priority,Description,Owner )
+	NUMERIC DeleteJobsForOrder( OrderID )
+	NUMERIC DeleteImagesForOrder( OrderID )
+	NUMERIC DeleteRawImagesForOrder( OrderID )
+	NUMERIC DeleteSubjectInfoIfAble( OrderID )
+	NUMERIC DeleteKPARSOrderOriginals( OrderID )
+	NUMERIC RemoveOrder( OrderID,DeleteImages,DeleteJobs,DeleteRawImages,DeleteKparsOriginals )
+	NUMERIC SetProfileForOrder( OrderID,ProfileName )
+	NUMERIC OrderExists( ID )
+	NUMERIC UpdateOrder( OrderID,<OptionalFieldValueArgs> )
+	NUMERIC FlattenOrder( OrderID, PrinterQueue) // optional args after Printer Queue
+	
+	-- ORDERITEM COMMANDS
+
+	STR     CreateOrderItemJobPath( OrderID,Item )
+	STR     MakePreviewPathFromPath( Path,CreateDirectory )
+	NUMERIC CreateOrderItemAndJob( OrderID,Item,Sequence,ProductID,Quantity )         // Optional Args come after Quantity
+	NUMERIC CreateOrderItemsForPackage( PackageID,PackageQty,Sequence,OrderID,Roll,Frame )
+	NUMERIC CalcNextForOrderItem( &dbase,OrderID,WhichField )
+	NUMERIC AddOrderItem( OrderID,Item,Sequence,Quantity,JobPath,ProductID,Status,WantMaintainOrderItem )  // GroupID,Subsequence,PackageID,PackageGroup,ProductType,ImagesOrderID,ImagesSubjectID,Workflow are optional
+	NUMERIC RunOrderItem( OrderID,Item,Quantity,PrintStatus )
+	NUMERIC RunOrderItemsForProducts( theOrderID,PrintStatus,QueueName )		// A series of product ids' are the variable parameters
+	NUMERIC RunJobsForOrderItemsQuery( OrderID,PrintStatus,QueueName,OrderItemsQuery )
+	NUMERIC CreateProofOrderItems( OrderID,ProductID )
+	NUMERIC UpdateOrderItem( OrderID,Item,<OptionalFieldValueArgs> )
+	NUMERIC MaintainOrderItems( OrderID,CreatePreviewIcon )
+	NUMERIC MaintainOrderItem( OrderID,ID,ItemJobPath,CreatePreviewIcon )
+	STR		GetUniquePackageGroup( OrderID )
+	NUMERIC EditOrderItemJobsForOrder( OrderID,AdditionalWhereClause )		// Add optional argument pairs 
+	NUMERIC EditOrderItemJob( OrderID,Item )	// Add optional argument pairs 
+	NUMERIC CreateOrderItemFromOrderItem( OrderID,Item,Sequence,Quantity,FromOrderID,ToItemID )	// Optional Args come after ToItemID
+	NUMERIC GetAnotherOrderItemNodeValue( OrderID,ItemID,NodeNum,attr,&Value )
+	STR		AnotherOrderItemNodeValue( OrderID,ItemID,NodeNum,attr )	// Calls GetAnotherOrderItemNodeValue() and returns Value as a STR
+	NUMERIC SetImagesForOrderItemsToAdjust( OrderID )
+	NUMERIC SetImagesForOrderItemToAdjust( OrderID,ItemID )
+
+	-- BOOKS COMMANDS
+
+	NUMERIC CreateBookFromExistingItems(Query,OrderID,Quantity,TemplateName);	// You pass in an SQL query to find the order items you want to 
+																				// insert into a book
+																				// Optional args after TemplateName 
+																				// contain pairs of book attribute and book values for overriding
+																				// contents of TemplateName
+				
+	NUMERIC CreateBook(OrderID,Quantity,TemplateName)			// returns the GroupID. 
+																// Optional args after TemplateName 
+																// contain pairs of book attribute and book values for overriding
+																// contents of TemplateName.  You follow this with calls
+																// to CreateOrderItemAndJob, passing in the GroupID
+
+	NUMERIC UpdateBook(OrderID, GroupID, FieldName,Value)		// Create or Update a Book.  Pass 0 as the GroupID for a new Book
+																// returns the GroupID 
+																// FieldName and Value are repeating fields in the books table
+		
+	NUMERIC AddBookAttribute(OrderID,GroupID,Attribute,Value)
+	STR		GetUniqueGroupID( OrderID )
+	
+	-- MOVIE COMMANDS
+	NUMERIC CreateBookMovie( ~<OrderID>~,~<BookID>~,<OptionalFieldValueArgs> )
+	VOID ResolveMovieMacros(Value)
+
+	-- U/I COMMANDS
+
+	NUMERIC WaitForDocToClose( Path )
+	NUMERIC WaitForDocToOpen( Path )
+	NUMERIC CloseAllOpenWindows()
+	NUMERIC Explore( Path )
+	NUMERIC OpenAFile( Path )
+	NUMERIC EditOrderItem( OrderID,Item,Msg )
+	NUMERIC OpenAdjustImages()
+	NUMERIC EditImage( OrderID,Roll,Frame,Msg )
+	NUMERIC OpenAJob( JobPath,OrderID,OrderItem )
+	NUMERIC SearchTable( Table )
+	NUMERIC OpenOrders( Title,Query )
+	NUMERIC OpenOrderItemThumbnails( OrderID )
+
+	-- CUSTOMER COMMANDS
+	NUMERIC UpdateCustomer( ID,<OptionalFieldValueArgs> )
+	NUMERIC RemoveCustomer( CustomerID,DeleteImages,DeleteJobs,DeleteRawImages,DeleteKparsOriginals )
+
+	-- SubjectInfo Commands
+	NUMERIC UpdateSubjectInfo( SubjectInfoOrderID,SubjectID,InfoType,<OptionalFieldValueArgs> )
+	NUMERIC DeleteSubjectInfo( SubjectInfoOrderID,SubjectID,InfoType )
+	NUMERIC DeleteSubjectInfoForOrder( OrderID,InfoType )
+	NUMERIC DeleteAllFromSubjectInfo( SubjectInfoOrderID,InfoType )
+	STR     GetSubjectInfoType( SubjectOrderID )
+	NUMERIC GetSubjectOrderIDInfoType( theOrderID, &theInfoType, &theSubjectInfoOrderId)
+	NUMERIC CreateOrderItemsFromSubjectInfo(OrderID,OrderIDForSubjectInfo,WhichImage,SubjectInfoQuery,JobPopulationScript, OrderBy,OrderIDSQLList)
+
+	-- PRODUCT COMMANDS
+	NUMERIC ProductExists( ID )
+	NUMERIC UpdateProduct( ID,<OptionalFieldValueArgs> )
+	NUMERIC ConvertLayout( LayoutPath , SavePath)
+	NUMERIC GetLayoutForProductID( &dBase,ProductID,&ProductLayoutPath,&IsPackage,&ProductType )       
+
+	-- IMAGE COMMANDS
+	NUMERIC UpdateRawImage( OrderID, Roll, Frame, Path, LowResFileName, OutputFolderPath, InputProfilePath )
+	NUMERIC UpdateRawImage2( OrderID,Roll,Frame,<OptionalFieldValueArgs> )
+	NUMERIC UpdateImage( OrderID,Roll,Frame,<OptionalFieldValueArgs> )
+	NUMERIC AddThumbnail( OrderID,Roll,Frame,Path )
+	NUMERIC AddImage( OrderID,Roll,Frame,Path,Profile,CropX,CropY,CropWidth,CropLength,RotateFromDisk,AutoBalance,LutIndex )
+	NUMERIC AddImageToScan( OrderID,Roll,Frame,aDen,aRed,aGrn,aBlu,cDen,cRed,cGrn,cBlu,Scan,Retouch,Inspect,Punch,XOffset,YOffset,SubjectID )
+	NUMERIC AutoBalanceImage( OrderID,Roll,Frame,SBALevel,Preference ) // SBALevel: 1 => DRGB; 2 => Den, 3 =>RGB
+	NUMERIC AutoBalanceOrder( OrderID,SBAOption,Preference ) // SBAOption: 1 => DRGB; 2 => Den, 3 =>RGB
+	NUMERIC AutoEnhanceImage( OrderID,Roll,Frame )
+	NUMERIC AutoEnhanceOrder( OrderID )
+	NUMERIC QueueRawImageForConversion(RawFilePath,OutputPath,FileType,JpgQuality,Priority,WhiteBalance,Exposure);
+	NUMERIC UpdateRawImageBibble( OrderID, Roll, Frame, RawPath, OutputFolderPath,<OptionalFieldValueArgs> )
+	NUMERIC FlattenImage(OrderID,Roll,Frame,ItemID,PrinterQueue ) // Optional params after PrinterQueue
+	NUMERIC SetImageFileOrientation( Path,Orientation )				// 0,90,180,270
+	NUMERIC SetImageOrientation( OrderID,Roll,Frame,Orientation )	// 0,90,180,270
+
+
+	-- RETOUCHING COMMANDS
+	NUMERIC AddStdInstruction( ID,Std,Description,<OptionalKparsBatchSetup> )
+	NUMERIC AddImageInstruction( OrderID,Roll,Frame,ID,Description,Std,Actual,Complete )
+
+
+	-- SHOOTDESCRIPTION COMMANDS
+	NUMERIC ShootDescExists( ID,&ShootType )
+	NUMERIC GetTypeListForShootDescID(ShootId,&TypeList,doCommaList)
+	NUMERIC UpdateShootDesc( ShootDescID,ShootType,<OptionalFieldValueArgs> )
+	
+
+	-- EVENTS
+	
+	NUMERIC TriggerOrderReceivedEvent( theOrderID,optionalTemplateID )
+	NUMERIC TriggerOrderStatusEvent( theOrderID,theStatus )
+	NUMERIC TriggerCmdImporterEvent( theID,theMsg )  Called automatically by the failure routines
+
+	-- WORKFLOW COMMANDS
+
+	NUMERIC UpdateWorkflow( Workflow,<OptionalFieldValueArgs> )
+
+	-- NOT READY FOR PRIME TIME
+
+	NUMERIC ProcessTextFile( Path )					// NOT DEBUGGED YET
+	NUMERIC ProcessJobList( &List )					// NOT DEBUGGED YET
+	STR     CreateJobPath( OrderID,Item )			// NOT DEBUGGED YET
+	NUMERIC GenerateJob( &dBase,BatchID,OrderID,&Record,Index )			// NOT DEBUGGED YET
+}
+
+
+OptionalFieldValueArgs = ~p1,v1,p2,v2,p3,v3,p4,v4,p5,v5,p6,v6,p7,v7,p8,v8,p9,v9,p10,v10,p11,v11,p12,v12,p13,v13,p14,v14,p15,v15~;
+
+Include: ~FormattingRoutines~;
+Include: ~DigitalCameraCommon~;
+Include: ~KparsCmds~;
+Include: ~<$App.Scripts>\Utilities2.txt~;
+Include: ~CreatePackages~;
+Include: ~DcSbaDoc~;
+
+IncludeClass( Events );
+
+OptionalInclude(~<$App.ShareDirectory>\Scripts\MyCmds.txt~);
+
+
+VOID	TraceScripts(value)					
+{ 
+	/* Programmatically turn script tracing to the session log on or off.  */
+	
+	TraceParse( SetGlobal,512,Numeric(~<value>~) ); 
+	
+	action = ACTION DOC ( TraceDoc "RefreshDoc()" );
+	
+	PerformActions( action );
+}
+
+
+// MAKE database AN OBJECT THAT IS A CONNECTION TO THE SHARED DATABASE
+
+if ( !ADO( database,Connect ) )		
+{
+	database( GetErrorDescription,theErr );
+	Failure( Translate( ~Connect To Database.  <theErr>~ ) );
+	Exit();
+}
+
+
+NUMERIC BeginTransaction()							// BEGIN AN SQL TRANSACTION
+{
+	if ( !database( BeginTransaction ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( ~BeginTransaction.  <theErr>~ ) );
+	}
+
+	return Success( Translate( ~BeginTransaction~ ) );
+}
+
+
+NUMERIC CommitTransaction()							// COMMIT AN SQL TRANSACTION	
+{
+	if ( !database( CommitTransaction ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( ~CommitTransaction.  <theErr>~ ) );
+	}
+
+	return Success( Translate( ~CommitTransaction~ ) );
+}
+
+
+// ROLLBACK A TRANSACTION WITH THE SHARED DATABASE
+
+NUMERIC RollBackTransaction()	
+{
+	if ( !database( RollBackTransaction ) )			// ROLLBACK AN SQL TRANSACTION
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( ~RollBackTransaction.  <theErr>~ ) );
+	}
+
+	return Success( Translate( ~RollBackTransaction~ ) );
+}
+
+
+// EXECUTE AN SQL STATEMENT FOR THE SHARED DATABASE
+
+NUMERIC DoSQL( SQLStatement )						// EXECUTE AN SQL STATEMENT FOR THE SHARED DATABASE
+{
+	if ( !database( Cmd,~<SQLStatement>~ ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( ~<SQLStatement>.  <theErr>~ ) );
+	}
+
+	return Success( Translate( ~<SQLStatement>~ ) );
+}
+
+
+// REPORT A SUCCESSFUL OPERATION
+
+NUMERIC Success( Msg )								// CALLED WHEN OPERATION COMPLETES SUCCESSFULLY			
+{
+	if ( ~<Msg>~ != ~~ )
+	{
+		Log( Session,~<$Job.Name> - <Msg>~ );
+
+		UserMessage( ~<Msg>~ );
+	}
+
+	return TRUE;
+}
+
+
+ExitOnFailure = TRUE;
+
+NUMERIC WantExitOnFailure(Value)					// INDICATE WHETHER TO TERMINATE ON FAILURE.  DEFAULT IS TRUE
+{
+	retval = <ExitOnFailure>;
+
+	ExitOnFailure = <Value>;
+
+	return <retval>;
+}
+
+
+// REPORT A FAILED OPERATION AND OPTIONALLY TERMINATE
+
+NUMERIC Failure( msg )								// CALLED WHEN AN OPERATION COMPLETES WITH ERROR
+{
+	if ( ~<Msg>~ != ~~ )
+	{
+		Log( Session,~<$Job.Name> - Failed. <msg>~ );
+
+		UserMessage( ~<Msg>~ );
+
+		ReplaceMany( ~<msg>~, ~\n~, ~<$chr.LF>~, msg );
+		database( LogActivity, Msg, ~<$Job.Name> - Failed. <$Str.$msg.SQLSafe>~, Type, Error );
+		
+		CallParent( WarningMessage,~<Msg>~,0 );
+		
+		AppendScriptErrorMsg( ~<Msg>~ );
+	}
+
+	TriggerCmdImporterEvent( Numeric(~<ExitOnFailure>~) ? ~CmdImporterExitOnFailure~ : ~CmdImporterFailure~,~<$Str.$msg.SQLSafe>~ );
+
+	if ( <ExitOnFailure> )
+	{
+		error();
+	}
+
+	return FALSE;
+}
+
+
+NUMERIC TriggerCmdImporterEvent( theID,theMsg )
+{
+BeginXML( theXML,TRUE );
+<CmdImporter>
+	<EventID><theID></EventID>
+	<Msg><$ContentsOf.theMsg.cdata></Msg>
+	<When><$Date.DateTime></When>
+	<SortableDateTime><$Date.SortableDateTime></SortableDateTime>
+	<FileName><$Job.Name></FileName>
+	<FilePath><$Job.Path></FilePath>
+	<Workstation><$App.ComputerName></Workstation>
+	<Instance><$App.Instance></Instance>
+	<User><$App.UserName></User>
+	<Caller><$Job.CallerName[2].cdata>(<$Job.CallerArgs[2].cdata>)</Caller>
+	<CallStack><$Job.Stack.cdata></CallStack>
+</CmdImporter>
+EndXML();
+
+	return QueueEvent( ~~,75,~<theID>~,~<$Job.Name>~,~<theMsg>~,theXML );
+}
+
+
+NUMERIC Info( Msg )									// LOG ANY MSG AND DISPLAY IT IN COMMAND IMPORTER WINDOW
+{
+	Log( Session,~<$Job.Name> - Info. <Msg>~ );
+	return UserMessage( ~<Msg>~ );
+}
+
+NUMERIC UserMessage( Msg )							// DISPLAY ANY MESSAGE IN THE COMMAND IMPORTER WINDOW
+{
+	ReturnOnSuccess( IsNull(~<Msg>~) );
+
+	if ( DefinedAndTRUE(EchoUserMessages) )
+	{
+		ReturnOnSuccess( Echo( ~<msg><$chr.CRLF>~ ) );
+	}
+
+	if ( Document( InvokingDocument,IsInvokingDocument ) )
+	{
+		Action = STR ( ChildMessage( ~<Msg>~ ); );
+
+		return InvokingDocument( ExecuteContentsOf,Action );
+	}
+
+	Return FALSE;
+}
+
+STR		GetWorkBatchID()			{ GetParentSymbolValue( Work_BatchID,Value );  return ~<Value>~; }
+STR		GetWorkBatchSequence()		{ GetParentSymbolValue( Work_BatchSequence,Value );  return ~<Value>~; }
+STR		GetWorkBatchWantDebug()		{ GetParentSymbolValue( Work_BatchWantDebug,Value );  return ~<Value>~; }
+
+VOID	NeedsAttention(value)		{ CallParent( NeedsAttention,Numeric(~<value>~) != 0 ); }
+
+
+NUMERIC	SetWorkResponse( msg )		
+{ 
+	return UpdateRemoteWork(~<Work_BatchID>~,Response,~<msg>~);
+} 
+
+
+NUMERIC	UpdateRemoteWork(theBatchID) 
+{ 	
+	Query = ~Select * From RemoteWork Where BatchID = '<theBatchID>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,GetExistingRecordFor,~<Query>~,Record ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	num = 1;
+
+	while ( DefinedAndNotNull( p<++num> ) )
+	{
+		Record( Set,~<p<num>>~,~<p<++num>>~ );
+	}
+	
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+	
+	return Success( ~Updated RemoteWork~ );
+}
+
+
+NUMERIC TriggerOrderReceivedEvent( theOrderID,optionalTemplateID )	{ return QueueEvent( ~~,50,~OrderReceived~,~<theOrderID>~,~<optionalTemplateID>~ ); }
+NUMERIC TriggerOrderStatusEvent( theOrderID,theStatus )				{ return QueueEvent( ~~,50,~Order<theStatus>~,~<theOrderID>~ ); }
+
+
+NUMERIC GetParentSymbolValue( Name,&Value )
+{
+	if ( Document( InvokingDocument,IsInvokingDocument ) )
+	{
+		return InvokingDocument( GetGlobalSymbolValue,~<Name>~,Value );
+	}
+	
+	Log( Session,~Failed to find the Invoking document to get the value of <Name>~ );
+	
+	return FALSE;
+}
+
+
+NUMERIC CallParent( routine )								// routine followed by optional parameters
+{
+	ReturnOnSuccess( IsNull(~<routine>~) );
+
+	if ( Document( InvokingDocument,IsInvokingDocument ) )
+	{
+		if ( InvokingDocument( HasFunction,~<routine>~ ) )
+		{
+			Action = STR ( routine(); );
+			
+			if ( <NumVariableParameters> > 0 )
+			{
+				Action = STR ( <routine>(<VariableParameters>); );
+			}
+
+			return InvokingDocument( ExecuteContentsOf,Action );
+		}
+	}
+	
+	return FALSE;
+}
+
+
+
+
+NUMERIC SetupProgressBar( Min,Max,Step )			// INITIALIZE THE PROGRESS BAR IN THE COMMAND IMPORTER WINDOW
+{
+	if ( Document( InvokingDocument,IsInvokingDocument ) )
+	{
+		Action = STR ( SetupProgressBar( ~<Min>~, ~<Max>~, ~<Step>~ ); );
+		return InvokingDocument( ExecuteContentsOf,Action );
+	}
+	return FALSE;
+}
+
+NUMERIC StepProgressBar()							// STEP THE PROGRESS BAR IN THE COMMAND IMPORTER WINDOW
+{
+	if ( Document( InvokingDocument,IsInvokingDocument ) )
+	{
+		Action = STR ( StepProgressBar(); );
+		return InvokingDocument( ExecuteContentsOf,Action );
+	}
+	return FALSE;
+}
+
+NUMERIC Stopping()									// SEE IF THE USER WANTS TO STOP
+{
+	if ( Document( InvokingDocument,IsInvokingDocument ) )
+	{
+		ReturnOnFailure( InvokingDocument( GetSymbolValue,Running,Running ) );
+		ReturnOnFailure( InvokingDocument( GetSymbolValue,Quitting,Quitting ) );
+
+		Running = DefinedAndTrue(Running);
+		Quitting = DefinedAndTrue(Quitting);
+
+		return !<Running> || <Quitting>;
+	}
+
+	return FALSE;
+}
+
+
+STR GetUniqueJobID()								// GET A UNIQUE JOBID FOR THE JOBQUEUE TABLE
+{
+	return UniqueJobID();
+}
+
+
+STR GetUniqueGroupID( OrderID )						// GET A UNIQUE GROUPID FOR THE ORDER
+{
+	return UniqueGroupID(database,~<OrderID>~);
+}
+
+
+STR GetUniquePackageGroup( OrderID )				// GET A UNIQUE PACKAGEGROUP FOR THE ORDER
+{
+	return UniquePackageGroup(database,~<OrderID>~);
+}
+
+STR ResolveMovieMacros(MovieID, val)
+{
+	replaceMany( ~<val>~,~[M]~,~<MovieID>~,val );
+	replaceMany( ~<val>~,~[R]~,~HiRes~,val );
+	replaceMany( ~<val>~,~[MG]~,Format( floor(Numeric(~<MovieID>~) / 1000) * 1000 + 1000,~%0<$str.$MovieID.length>ld~),val );
+	return ~<val>~;
+
+}
+
+
+NUMERIC InsertJob( BatchID,OrderID,OrderSequence,OrderItemID,OrderItemQty,OrderItemSequence,JobPath,QueueName,PrinterName,Priority )	// INSERT A JOBFILE IN THE JOBQUEUE
+{
+	Now = Time();
+
+	JobID = GetUniqueJobID();
+
+	Fields = ~JobPath,QueueName,SubmitDate,BatchID,OrderID,OrderSequence,OrderItemID,OrderItemQty,OrderItemSequence,JobID,PrintStatus,Priority,Owner~;
+
+	Values = ~'<JobPath>','<QueueName>',<Now>,'<BatchID>','<OrderID>',<OrderSequence>,<OrderItemID>,<OrderItemQty>,<OrderItemSequence>,'<JobID>',8,<Priority>,'<$App.UserName>'~;
+
+	if ( !IsNull( ~<PrinterName>~ ) )
+	{
+		Fields = ~<Fields>,PrinterName~;
+		Values = ~<Values>,'<PrinterName>'~;
+	}
+
+	if ( IsNull( ~<Priority>~ ) )
+	{
+		Priority = 50;
+	}
+
+	Cmd = ~Insert Into JobQueue(<Fields>) Values(<Values>)~;
+
+	if ( !database( Cmd,~<cmd>~ ) )
+	{
+		database( GetErrorDescription,theErr );		
+		return Failure( Translate( ~Failed to add job to the JobQueue.  <Cmd>.  <theErr>~ ) );
+	}
+
+	return TRUE;
+}
+
+NUMERIC DeletePrintBatch( BatchID )
+{	
+	Query = ~Select * From JobQueue Where BatchID = '<BatchID>' Order By JobID~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Forward,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	while ( List( GetNext,Job ) )
+	{
+		Path = ~<$pcon.Job[JobPath]>~;
+
+		if ( ~<Path>~ != ~~ )
+		{
+			Files( ChMod,~<Path>~,ReadWrite );
+
+			if ( !Files( Delete,~<Path>~ ) )
+			{ 
+				Failure( Translate( ~Could not delete <Path>.  <$Func.GetLastErrorMsg()>~ ) );
+			}
+
+			Directory( Remove,~<$pcon.Job[JobPath].path>~ );
+		}
+		
+		Success( Translate( ~Deleted Job for Batch <BatchID>   Item <$pcon.Job[JobID]>~ ) );
+	}
+	
+	if ( !database( cmd,~Delete From JobQueue Where BatchID = '<BatchID>'~ ) )
+	{
+		database( GetErrorDescription,theErr );		
+		return Failure( Translate( ~Failed to delete Job Records for Batch '<BatchID>'.  <Cmd>.  <theErr>~ ) );
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC PrintBatch( BatchID )
+{
+	Cmd = ~Update JobQueue Set PrintStatus = 1 Where BatchID = '<BatchID>'~;
+
+	if ( !database( Cmd,~<cmd>~ ) )
+	{
+		database( GetErrorDescription,theErr );		
+		return Failure( Translate( ~Failed to add job to the JobQueue.  <Cmd>.  <theErr>~ ) );
+	}
+
+	if ( FunctionDefined( PostDocMessage ) )
+	{
+		PostDocMessage( ~Job Queue~,~DataHasChanged();~ );
+	}
+
+	WakeUpLocalRenderEngines();
+
+	return TRUE;
+}
+
+
+
+NUMERIC AddOrder( OrderID,CustomerID,ImagesOrderID,BatchID,BatchSeq,Status,Type,OrderDate,ShipDate,Priority,Description,Owner )
+{
+	Query = ~Select * From Orders Where ID = '<OrderID>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		List( AddNew,Record );
+
+		Record( Set,ID,~<OrderID>~ );
+		Record( Set,OrderDate,~<$Date.date>~ );
+		Record( Set,ShipDate,~<$Date.Date>~ );
+	}
+
+	if ( ~<CustomerID>~ != ~~ )				{ Record( Set,CustomerID,~<CustomerID>~ ); }
+	if ( ~<ImagesOrderID>~ != ~~ )			{ Record( Set,ImagesOrderID,~<ImagesOrderID>~ ); }
+	if ( ~<BatchID>~ != ~~ )				{ Record( Set,BatchID,~<BatchID>~ ); }
+	if ( ~<BatchSeq>~ != ~~ )				{ Record( Set,BatchSeq,~<BatchSeq>~ ); }
+	if ( ~<Status>~ != ~~ )					{ Record( Set,Status,~<Status>~ ); }
+	if ( ~<Type>~ != ~~ )					{ Record( Set,Type,~<Type>~ ); }
+	if ( ~<OrderDate>~ != ~~ )				{ Record( Set,OrderDate,~<OrderDate>~ ); }
+	if ( ~<ShipDate>~ != ~~ )				{ Record( Set,ShipDate,~<ShipDate>~ ); }
+	if ( ~<Priority>~ != ~~ )				{ Record( Set,Priority,~<Priority>~ ); }
+	if ( ~<Description>~ != ~~ )			{ Record( Set,Description,~<Description>~ ); }
+	if ( ~<Owner>~ != ~~ )					{ Record( Set,Owner,~<Owner>~ ); }
+
+	if ( IsNull(~<ImagesOrderID>~) )
+	{
+		if ( ShootDescExists( ~<OrderID>~,ShootType) )
+		{
+			Record( Set,ShootDescID,~<OrderID>~ );
+			Record( Set,ShootDescType,~<ShootType>~ );
+		}
+	}
+	else
+	{
+		Cmd = ~Select ShootDescID,ShootDescType From Orders Where ID = '<ImagesOrderID>'~;
+		if ( database(GetValuesFor,~<Cmd>~,ShootDescID,ShootType) )
+		{
+			if ( !IsNull(~<ShootDescID>~) )
+			{
+				Record( Set,ShootDescID,~<ShootDescID>~ );
+				Record( Set,ShootDescType,~<ShootType>~ );
+			}
+		}
+	}
+
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	return Success( Translate( ~AddOrder <OrderID>~ ) );
+}
+
+
+NUMERIC DeleteJobsForOrder( OrderID )
+{
+	CMD = ~Delete From OrderItemImages Where ItemOrderID = '<OrderID>'~;
+	database( Cmd,~<cmd>~ );
+
+	Query = ~Select * From OrderItems Where OrderID = '<OrderID>' Order By ID~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Forward,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	while ( List( GetNext,OrderItem ) )
+	{
+		Path = ~<$pcon.OrderItem[PreviewPath]>~;
+
+		if ( ~<Path>~ != ~~ )
+		{
+			BroadcastMessageToAllViews( ReleaseImage,~<Path>~ );
+			Files( ChMod,~<Path>~,ReadWrite );
+
+			if ( !Files( Delete,~<Path>~ ) )
+			{ 
+				Failure( Translate( ~Could not delete <Path>.  <$Func.GetLastErrorMsg()>~ ) );
+			}
+			Directory( Remove,~<$pcon.OrderItem[PreviewPath].path>~ );
+			Directory( RemoveParent,~<$pcon.OrderItem[PreviewPath].path>~ );
+		}
+
+		Path = ~<$pcon.OrderItem[JobPath]>~;
+
+		if ( ~<Path>~ != ~~ )
+		{
+			Files( ChMod,~<Path>~,ReadWrite );
+
+			if ( !Files( Delete,~<$pcon.OrderItem[JobPath]>~ ) )
+			{ 
+				Failure( Translate( ~Could not delete <$pcon.OrderItem[JobPath]>.  <$Func.GetLastErrorMsg()>~ ) );
+			}
+
+			Directory( Remove,~<$pcon.OrderItem[JobPath].path>~ );
+		}
+
+		if ( !IsNULL(~<$pcon.OrderItem[PreviewPath]>~) )
+		{
+			if ( Files( FileExists,~<$pcon.OrderItem[PreviewPath]>~ ) )
+			{
+				if ( !Files( Delete,~<$pcon.OrderItem[PreviewPath]>~ ) )
+				{
+					Log( Session,Translate( UIMessages,CouldNotDeleteFile,~<$pcon.OrderItem[PreviewPath]>~ ) );
+				}
+			}
+				
+			Directory( Remove,~<$pcon.OrderItem[PreviewPath].path>~ );
+			Directory( RemoveParent,~<$pcon.OrderItem[PreviewPath].path>~ );
+		}
+
+		
+		Success( Translate( ~Deleted Job and Preview for <$pcon.OrderItem[OrderID]>   Item <$pcon.OrderItem[ID]>~ ) );
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC DeleteImagesForOrder( OrderID )
+{
+	Query = ~Select * From Images Where OrderID = '<OrderID>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Forward,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	while ( List( GetNext,Image ) )
+	{		
+		ContinueIf( ~<$pcon.Image[Path]>~ == ~~ );
+			
+		ContinueIf( IsUserImage( ~<$pcon.Image[Path]>~ ) );			// Can't delete the high res image if it belongs to an external customer
+
+		BroadcastMessageToAllViews( ReleaseImage,~<$pcon.Image[Path]>~ );
+
+		if ( !Files( Delete,~<$pcon.Image[Path]>~ ) )
+		{
+			err = GetLastErrorMsg();
+			Failure( Translate( ~Could not delete <$pcon.Image[Path]>.  <err>~ ) );
+		}
+		else
+		{
+			Success( Translate( ~Deleted <$pcon.Image[Path]>~ ) );
+						
+			if ( !Files( Delete,~<$pcon.Image[Path]>.pdb~ ) )	// Pre Dust Bust Image
+			{
+				err = GetLastErrorMsg();
+				Log( Session,~Could not delete <$pcon.Image[Path]>.pdb.  <err>~ ) );
+			}
+
+			ImagePath = ~<$pcon.Image[Path]>~;
+
+			OutputFolder = ~<$Str.$ImagePath.Path>~ + ~\AE~;	//	REMOVE ANY AE IMAGES
+			CopyPath = ~<OutputFolder>~ + ~\~ + ~<$Str.$ImagePath.Filename>~;
+			Files( Delete,~<CopyPath>~ );				// NOTE: We don't care if this fails, since it's just the copy.
+			Files( Delete,~<$pcon.Image[Path]>.pdb~ );	// gets rid of an original from dust busting
+						
+			Directory( Remove, ~<OutputFolder>~ ) ;
+
+			Directory( Remove,~<$pcon.Image[Path].path>~ );
+			Directory( RemoveParent,~<$pcon.Image[Path].path>~ );
+		}
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC IsUserImage( ImagePath )
+{
+	Query = ~Select count(*) From UserImages Where Path = '<ImagePath>'~;
+	
+	return database( RecordCountFor,~<Query>~ ) > 0;
+}
+
+
+NUMERIC DeleteRawImagesForOrder( OrderID )
+{
+	Query = ~Select * From RawImages Where OrderID = '<OrderID>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Forward,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	while ( List( GetNext,RawImage ) )
+	{		
+		if ( ~<$pcon.RawImage[Path]>~ == ~~ )
+			continue;
+
+		BroadcastMessageToAllViews( ReleaseImage,~<$pcon.RawImage[Path]>~ );
+
+		if ( !Files( Delete,~<$pcon.RawImage[Path]>~ ) )
+		{
+			err = GetLastErrorMsg();
+			Failure( Translate( ~Could not delete <$pcon.RawImage[Path]>.  <err>~ ) );
+		}
+		else
+		{
+			Success( Translate( ~Deleted <$pcon.RawImage[Path]>~ ) );
+			Directory( Remove,~<$pcon.RawImage[Path].path>~ );
+			Directory( RemoveParent,~<$pcon.RawImage[Path].path>~ );
+		}
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC DeleteSubjectInfoIfAble( OrderID )
+{
+	InfoType = ~~;
+
+	theQuery = ~Select ImagesOrderID,InfoType,ShootDescID,ShootDescType From Orders Where ID = '<OrderID>'~;
+
+	database( GetValuesFor,~<theQuery>~,ImagesOrderID,InfoType,ShootDescID,ShootDescType );
+
+	if (~<ImagesOrderID>~ == ~~)
+	{
+		if ( ~<ShootDescID>~ != ~~ )
+		{
+			theQuery = ~Select ID from ShootDescription<ShootDescType> where ID = '<ShootDescID>'~;			
+			if ( database( GetValuesFor,~<theQuery>~,theID ) )  // ShootDesc record exists
+			{	return TRUE;	}
+
+			if (~<InfoType>~ != ~~)
+			{
+				theQuery = ~Select Count(1) From Orders Where ShootDescID = '<ShootDescID>' And InfoType = '<InfoType>' And ImagesOrderID Is Null~;
+			}
+			else
+			{
+				theQuery = ~Select Count(1) From Orders Where ShootDescID = '<ShootDescID>' And InfoType Is NUll And ImagesOrderID Is Null~;
+			}
+
+			database( GetValuesFor,~<theQuery>~, numRecs);  
+
+			if ( <NumRecs> > 1 )  // Other orders use the SubjectInfo table
+			{	return TRUE;	}
+
+			cmd = ~Delete From SubjectInfo<InfoType> Where OrderID = '<ShootDescID>'~;
+			
+		}
+		else
+		{
+			// should I make sure that a ShootDesc record does not exist?
+			cmd = ~Delete From SubjectInfo<InfoType> Where OrderID = '<OrderID>'~;
+		}
+
+		database( CMD,~<cmd>~ );
+
+		Log( Session,~Cmd Importer: Delete From SubjectInfo<InfoType> Where OrderID = '<OrderID>'~ );
+	}
+
+	return TRUE;
+}
+
+// the path is configurable and must be recreated for the delete.
+NUMERIC DeleteKPARSOrderOriginals( OrderID )
+{
+	Key1 = ~OrderID = '<OrderID>' AND OverwriteOriginal = 0 AND RetouchState = 'Complete'~;
+	fields = ~Roll,Frame,OriginalPath,OriginalPrefix,OriginalSuffix~;
+	query1 = ~SELECT <fields> FROM RetouchImages WHERE <Key1>~;
+
+	if ( !PGenConList( List,Connection,database,Lock,Pessimistic,Cursor,Keyset,Query,~<query1>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return FALSE;
+	}
+
+	Count = List( NumEntries );
+	if ( <Count> == 0 )
+	{
+		return TRUE;
+	}
+
+	newPath			= ~~;
+	Key2			= ~~;
+	drive			= ~~;
+	dir				= ~~;
+	originalFile	= ~~;
+	ext				= ~~;
+
+	while ( List( GetNext,Item ) ) 
+	{
+		Key2 = ~OrderID = '<OrderID>' AND Roll = '<$pCon.Item[Roll]>' AND Frame = '<$pCon.Item[Frame]>'~;
+
+		pathQuery = ~Select Path from Images Where <Key2>~;
+		if ( !database( GetValuesFor,~<pathQuery>~,path ) )
+		{
+			database( GetErrorDescription,theErr );
+			Log( Session, Translate(~Could not retrieve path for <Key2>. <theErr>~) );
+			continue;
+		}
+		Files( SplitPath,~<path>~,drive,dir,originalFile,ext );
+
+		if ( ~<$pCon.Item[OriginalPath]>~ == ~~ )
+		{
+			newPath = ~<drive><dir><$pCon.item[OriginalPrefix]><originalFile><$pCon.item[OriginalSuffix]><ext>~;
+		}
+		else
+		{
+			newPath = ~<$pCon.item[OriginalPath]>\<OrderID>\<$pCon.item[Roll]>~;
+			newPath = ~<newPath>\<$pCon.item[OriginalPrefix]><originalFile><$pCon.item[OriginalSuffix]><ext>~;
+		}
+
+		Files( Delete, ~<newPath>~ );
+	}
+
+	return TRUE;
+	
+}
+
+NUMERIC RemoveCustomer( CustomerID,DeleteImages,DeleteJobs,DeleteRawImages,DeleteKparsOriginals )
+{
+	PGenConList( List,Connection,database,Query,~Select ID From Orders Where CustomerID = '<CustomerID>'~ );
+
+	while ( List( GetNext,Rec ) )
+	{
+		RemoveOrder( ~<$pcon.Rec[ID]>~,~<DeleteImages>~,~<DeleteJobs>~,~<DeleteRawImages>~,~<DeleteKparsOriginals>~ );
+	}
+
+	database( Cmd,~Delete From CustomerProducts Where CustomerID = '<CustomerID>'~ );
+
+	database( Cmd,~Delete From Studios Where ID = '<CustomerID>'~ );
+
+	database( Cmd,~Delete From ImageAdjustments Where CustomerID = '<CustomerID>'~ );
+
+	database( Cmd,~Update Products Set CustomerID = NULL Where CustomerID = '<CustomerID>'~ );
+
+	database( Cmd,~Delete From ProShotsProducts Where CustomerID = '<CustomerID>'~ );
+	
+	database( Cmd,~Delete From Customers Where ID = '<CustomerID>'~ );
+
+	return Success( Translate( ~Removed Customer <CustomerID>~ ) );
+}
+
+
+NUMERIC RemoveOrder( OrderID,DeleteImages,DeleteJobs,DeleteRawImages,DeleteKparsOriginals )	
+{
+	ReturnOnSuccess( database( RecordCountFor,~Select count(*) From Orders Where ID = '<OrderID>' AND CustomerID <> 'Product'~ ) == 0 );
+
+	if ( MakeNumber( ~<DeleteImages>~ ) )
+	{
+		DeleteImagesForOrder( ~<OrderID>~ );
+	}
+
+	if ( MakeNumber( ~<DeleteRawImages>~ ) )
+	{
+		DeleteRawImagesForOrder( ~<OrderID>~ );
+	}
+	
+	database( CMD,~Delete From ImagesServices Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From OrderItemsServices Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From OrderServices Where OrderID = '<OrderID>'~ );
+
+	database( CMD,~Delete From ProSeriesImagesXref Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From WorkInProgress Where OrderID = '<OrderID>'~ );
+
+	if ( MakeNumber(~<DeleteKparsOriginals>~) )
+	{
+		DeleteKparsOrderOriginals( ~<OrderID>~ );
+	}
+
+	database( CMD,~Delete From OrderOptions Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From OrderImageOptions Where OrderID = '<OrderID>'~ );
+	
+	database( CMD,~Delete From ImageCorrections Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From ProductImages Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From RemoteAssets Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From Images Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From Retouch Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From RetouchImages Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From SBAImages Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From DSBAImages Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From ImageSorterSummary Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From OrderItemImages Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From CompSbaData Where OrderID = '<OrderID>'~ );
+
+	database( CMD,~Delete From OrderNotifications Where OrderID = '<OrderID>'~ );
+
+	database( CMD,~Delete From OrderItemImages Where ItemOrderID = '<OrderID>'~ );
+	database( CMD,~Delete From RawImages Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From DCImageProperties Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From DCQueue Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From KparsData Where OrderID = '<OrderID>'~ );
+
+	if ( MakeNumber(~<DeleteJobs>~) )
+	{
+		DeleteJobsForOrder( ~<OrderID>~ );
+	}
+
+	database( CMD,~Delete From Rolls Where OrderID = '<OrderID>'~ );
+	
+	database( CMD,~Delete From OrderItemOptions Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From OrderItems Where OrderID = '<OrderID>'~ );
+
+	DeleteSubjectInfoIfAble( ~<OrderID>~ );
+
+	database( CMD,~Delete From OrderDlvrbl Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From Composite Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From NodeDetails Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From CropServices Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From BremsonScanList Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From ProductXRef Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From Tracking Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From EndUserInfo Where OrderID = '<OrderID>'~ );
+	
+	database( CMD,~Delete From JobQueue Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From Orders Where ID = '<OrderID>'~ );
+	database( CMD,~Delete From BookOptions Where OrderID = '<OrderID>'~ );	
+	database( CMD,~Delete From Books Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From BookAttributes Where OrderID = '<OrderID>'~ );
+	database( CMD,~Delete From BookDescription Where OrderID = '<OrderID>'~ );
+	
+	return Success( Translate( ~Deleted Order <OrderID>~ ) );
+}
+
+NUMERIC CreateFlattenedJob(OrderID,Roll,Frame,PrinterQueue,JobPath) // takes optional args after job path
+{
+	UseUnkeyed = 0;
+	NoMerge = 0;
+	ChromaKeyBGID = ~~;
+	num = 5;
+	PreserveColor = 0;
+	TransparentImage = 0;
+	
+	while ( DefinedAndNotNull( p<++num> ) )		// ANOTHER OPTIONAL ARG?
+	{
+		Operation = ~<P<num>>~;
+		Value = ~<P<++num>>~;
+
+		if ( SimilarSTR( ~<Operation>~,~NoMergeBackground~ ) )	 
+		{
+			NoMerge = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~UseUnkeyedImage~ ) )	
+		{
+			UseUnkeyed =  ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~ChromaKeyBGID~ ) )	
+		{
+			ChromaKeyBGID = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~PreserveColor~ ) )	
+		{
+			PreserveColor = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~TransparentImage~ ) )	
+		{
+			TransparentImage = ~<Value>~;
+		}
+		else		
+		{
+			return Failure( Translate( ~<Operation> is invalid in CreateFlattenedJob()~ ) );
+		}
+	}
+	
+	
+	BeginBUFFER(MyJob,TRUE);
+FileType: Job;
+SaveMetaData: 1
+Macros:   ~Macros.txt~;
+UnitOfMeasure: Inches;
+BeginInclude();
+
+
+if (GenCon( PrinterSetup,IsPrintPage,PrinterSetup ))
+{
+	ForceOutput = PrinterSetup(GetNumeric,~ForcePDFOutput~);
+	if ( <ForceOutput> != 0 )
+	{
+		AddPrintingError( ~Printer Queue '<PrinterQueue>' cannot be used for flattening because it changes the output file type.  To flatten, Force Output Type on Printer Queue '<PrinterQueue>' must be set to None~ );
+		Log( Session, ~Printer Queue '<PrinterQueue>' cannot be used for flattening because it changes the output file type.  To flatten, Force Output Type on Printer Queue '<PrinterQueue>' must be set to None~ );
+		Error();
+	}
+}
+
+
+
+
+VOID FinishFlatten()	
+{
+	if ( !RenderList( rList,GetCurrent ) )			// Get the list of Rendering Instructions for this job
+	{ 
+		Log(Session, ~The Job <$Job.Name> is invalid.  It has no renderlist.~ );
+		return;
+	}
+	
+	if ( rList( GetNodeByID,~10000~,0,TheNode ) )		// Find the node that has the image
+	{
+		rList( GetResolvedNodeValue,10000,~Ifile:~,Dst);
+		Src = ~<Dst>_ZZZ~;
+		if (Files(RenameWithRetry, ~<Src>~,~<Dst>~))
+		{
+			Log( Session,~FlattenImage: Removing Image Corrections for <Dst>~ );
+			if (!<PreserveColor>)
+			{
+				// Apply the crop, rotation, and color corrections to the image and reset the database values for crop, rotation and color corrections
+				ImageCorrections( Flatten,~<Dst>~ ,TRUE ); // TRUE = Reset Rotation
+				ImageCorrections( UpdateCrop,~<Dst>~,50,50,100,100 );
+			}
+			else
+			{ 
+				// Preserve database color corrections.  Apply the crop and rotation to the
+				// image's pixels and reset the crop and rotation in the database
+				ResetCropAndRotation(~<Dst>~);
+			}
+			AddThumbNailToImage( ~<Dst>~,500,100 );
+			theNode(GetValue,~IWidth:~,ImageWidth);
+			theNode(GetValue,~IHeight:~,ImageHeight);
+			res = rList(GetResolution);
+			ImageWidth = Numeric(~<ImageWidth>~) * <res> ;
+			ImageHeight = Numeric(~<ImageHeight>~) * <res> ;
+			ImageWidth = Round(~<ImageWidth>~);
+			ImageHeight = Round(~<ImageHeight>~);
+			UpdateImagesTable(~<Dst>~,<ImageWidth>,<ImageHeight>);
+		}
+		else
+		{
+			Log(Session,~<Src> could not be renamed to <Dst>~);
+		}
+	}
+}
+
+
+VOID UpdateImagesTable(Path,Width,Length)
+{
+	if ( !ADO( dBase,Connect,Cmd,~Update Images Set Width = <Width> , Length = <Length> Where Path = '<Path>'~ ) )
+	{
+		dBase( GetErrorDescription,theErr );
+		Log( Session,~UpdateImagesTable: Could not update width and height for <Path>. <theErr>~ );
+	}	
+}
+
+
+VOID ResetCropAndRotation( ImagePath )
+{
+	if ( ImageCorrections(GetCurrentCorrections,~<ImagePath>~,theCorrections) )
+	{
+		currentRotation = theCorrections(GetNumeric,orgRotateFromDisk);
+
+		rotationDelta = 360 - <currentRotation>;
+		
+		rotationDelta = <rotationDelta> % 360;
+
+		ImageCorrections( RotateBy,~<ImagePath>~,~<rotationDelta>~ );
+
+		ImageCorrections( UpdateCrop,~<ImagePath>~,50,50,100,100 );
+	}
+
+}
+
+VOID SuppressCorrections(NodeID)
+{
+	if (Printing())
+	{
+		if ( RenderList( rList,GetCurrent ) )			// Get the list of Rendering Instructions for this job
+		{ 
+			if ( rList( GetNodeByID,~<NodeID>~,0,TheNode ) )		// Find the node that has the image
+			{
+				theNode(SetValue,~NoApplyCorrections:~,1);
+			}
+		}
+	}
+}
+
+EndInclude();
+
+AutoSizeToImage: 10000
+Main:
+ILocation: 0 0 8 10
+
+IL: 10000
+ILocation: 0 0 8 10
+IFile: ~<$@Image.PathOfOrderRollFrame['<OrderID>','<Roll>','<Frame>']>~
+ChromaKeyBGID: ~<ChromaKeyBGID>~
+NoMergeBackground: <NoMerge>
+UseUnkeyedImage: <UseUnkeyed>
+TransparentImage: <TransparentImage>
+if (<PreserveColor>) 
+{
+PostProcess: ~SuppressCorrections(10000);~
+}
+
+SaveImage:
+QueueName: ~<PrinterQueue>~
+SaveFileType: ~JPEG~
+SaveName: ~<$@IFile.10000>_ZZZ~
+Enabled: 1
+EmbedProfileInOutputImage: 1
+ProcessAfter: ~ ; FinishFlatten();~
+EndBUFFER();
+	Files( WriteContentsOf,~<JobPath>~,MyJob);
+	return TRUE;
+}
+
+NUMERIC ForcePDFOutputForQueue(PrinterQueue)
+{
+	Query2 = ~Select ForcePDFOutput from QueueDefinition Where Queuename = '<PrinterQueue>'~;
+	if ( !database( GetValuesFor,~<Query2>~,ForcePDFOutput ) )
+	{
+		database( GetErrorDescription,theErr );		
+		return FALSE;
+
+	}
+	if ( Numeric(~<ForcePDFOutput>~) == 0)
+	{
+		return FALSE;
+	}
+	return TRUE;
+}
+
+NUMERIC FlattenImage(OrderID,Roll,Frame,ItemID,PrinterQueue )
+{
+	NoMergeBG = 0;
+	UseUnkeyed = 0;
+	ChromaKeyBGID = ~~;
+	ChromaKeyBGIDOption = 0;
+	ProductType = ~~;
+	CustomerBGId = ~~;
+	PreserveColor = 0;
+	TransparentImage = 0;
+	DontCheckForcePDFOutput = 0;
+	num = 5;
+
+	while ( DefinedAndNotNull( p<++num> ) )		// ANOTHER OPTIONAL ARG?
+	{
+		Operation = ~<P<num>>~;
+		Value = ~<P<++num>>~;
+
+		if ( SimilarSTR( ~<Operation>~,~SetupName~ ) )	 
+		{
+			SetupName = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~ChromaKeyBGIDOption~ ) )	 
+		{
+			ChromaKeyBGIDOption = Numeric(~<Value>~);
+		}
+		else if ( SimilarSTR( ~<Operation>~,~DP2BGId~ ) )	 
+		{
+			DP2BGId = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~ProductType~ ) )	 
+		{
+			ProductType = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~CustomerBGId~ ) )	 
+		{
+			CustomerBGId = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~PreserveColor~ ) )	 
+		{
+			PreserveColor = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~TransparentImage~ ) )	 
+		{
+			TransparentImage = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~DontCheckForcePDFOutput~ ) )	 
+		{
+			DontCheckForcePDFOutput = Numeric(~<Value>~);
+		}
+		else		
+		{
+			return Failure( Translate( ~<Operation> is invalid in FlattenImage()~ ) );
+		}
+	}
+	
+	if (<DontCheckForcePDFOutput> == 0)
+	{
+		if (ForcePDFOutputForQueue(~<PrinterQueue>~))
+		{
+			Log(Session, ~Flatten Image could not be run because the field ForcePDFOutput (displayed as Force Output Type) on Queue <PrinterQueue> is not set to None~);
+
+			return FALSE;
+		}
+	}
+	
+	if (Defined(SetupName))
+	{
+		Query = ~Select ChromaKeyBGIDOption,DP2BGId,ProductType,CustomerBGId from ExportImageSetups Where Setup = '<SetupName>'~;
+
+		if ( !database(GetValuesFor,~<Query>~,ChromaKeyBGIDOption,DP2BGId,ProductType,CustomerBGId ) )
+		{
+			database( GetErrorDescription,theErr );
+			return Failure( Translate( ~Query Failed: <Query>. <theErr>~ ) );
+		}
+		
+		if (IsNull(~<PrinterQueue>~))
+		{
+			PrinterQueue = ~<$con.Setup[QueueName]>~;
+		}
+	}
+	ChromaKeyBGIDOption = Numeric(~<ChromaKeyBGIDOption>~);	
+	if ( <ChromaKeyBGIDOption> == 0 )				// Flatten with transparency
+	{
+		NoMergeBG = 1;
+		TransparentImage = 1;
+	}
+	else if ( <ChromaKeyBGIDOption> == 1 )			// Flatten using a dp2 background id to find the background
+	{
+		ChromaKeyBGID = ~<DP2BGId>~;
+	}
+	else if ( <ChromaKeyBGIDOption> == 2 )			// Flatten using a customer background id to find the background
+	{	
+	
+		ChromaKeyBGID = GetCustomerBGID( ~<OrderID>~,~<CustomerBGId>~, ~<ProductType>~);
+		
+	}
+	else if ( <ChromaKeyBGIDOption> == 3 )			// Export using a the subjectinfo to find the background
+	{					
+		Query = ~Select Path From Images Where OrderID ='<OrderID>' And Roll = '<Roll>' And Frame = '<Frame>'~;
+		if ( !database(GetValuesFor,~<Query>~,ImagePath ) )
+		{
+			database( GetErrorDescription,theErr );		
+			return Failure( Translate( ~Error Reading Image Path from Images.  Query: <Query>. <theErr>~ ) );
+
+		}
+		ChromaKeyBGID =	BackgroundIDForImage(~<ImagePath>~,~<ProductType>~);
+	}
+	else if ( <ChromaKeyBGIDOption> == 4 )			// Export the image original green screen image with no masking
+	{		
+		NoMergeBG = 1;
+		UseUnkeyed = 1;
+	}
+	
+	
+	JobPath = ~~;
+	ReturnOnFailure( CreateJobQueuePath(~<OrderID>~,~<ItemID>~,~<PrinterQueue>~, JobPath));
+	ReturnOnFailure( CreateFlattenedJob( ~<OrderID>~,~<Roll>~,~<Frame>~,~<PrinterQueue>~,~<JobPath>~,NoMergeBackground, <NoMergeBG>,UseUnkeyedImage,<UseUnkeyed>,ChromaKeyBGID,~<ChromaKeyBGID>~,PreserveColor,~<PreserveColor>~,TransparentImage,~<TransparentImage>~));
+	return AddJobToDatabase( ~<PrintBatchID>~,~<OrderID>~,1,1,1,~<JobPath>~,~<PrinterQueue>~ ,50) ;
+
+}
+
+NUMERIC FlattenOrder(OrderID,PrinterQueue) // takes optional args:
+{
+	num = 2;
+	
+	while ( DefinedAndNotNull( p<++num> ) )		// ANOTHER OPTIONAL ARG?
+	{
+		Operation = ~<P<num>>~;
+		Value = ~<P<++num>>~;
+
+		if ( SimilarSTR( ~<Operation>~,~SetupName~ ) )	 
+		{
+			SetupName = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~ChromaKeyBGIDOption~ ) )	 
+		{
+			ChromaKeyBGIDOption = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~DP2BGId~ ) )	 
+		{
+			DP2BGId = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~ProductType~ ) )	 
+		{
+			ProductType = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~CustomerBGId~ ) )	 
+		{
+			CustomerBGId = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~PreserveColor~ ) )	 
+		{
+			PreserveColor = ~<Value>~;
+		}
+		else		
+		{
+			return Failure( Translate( ~<Operation> is invalid in FlattenOrder()~ ) );
+		}
+	}
+
+	Query = ~Select * From Images Where OrderID = '<OrderID>'~;
+	if ( !PGenConList( List,Connection,database,Cursor,Forward,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	itemID = 0;
+	
+	if (ForcePDFOutputForQueue(~<PrinterQueue>~))
+	{
+		Log(Session, ~Flatten Order could not be run because the field ForcePDFOutput (displayed as Force Output Type) on Queue <PrinterQueue> is not set to None~);
+		return FALSE;
+	}
+
+	while ( List( GetNext,Image ) )
+	{
+		if (<num> >= 14 )
+		{
+			ReturnOnFailure( FlattenImage( ~<OrderID>~,~<$pcon.Image[Roll]>~,~<$pcon.Image[Frame]>~,<++itemID>,~<PrinterQueue>~,~<p3>~,~<p4>~,~<p5>~,~<p6>~,~<p7>~,~<p8>~,~<p9>~,~<p10>~,~<p11>~,~<p12>~,~<p13>~,~<p14>~,DontCheckForcePDFOutput,1) );
+		}
+		if (<num> >= 12 )
+		{
+			ReturnOnFailure( FlattenImage( ~<OrderID>~,~<$pcon.Image[Roll]>~,~<$pcon.Image[Frame]>~,<++itemID>,~<PrinterQueue>~,~<p3>~,~<p4>~,~<p5>~,~<p6>~,~<p7>~,~<p8>~,~<p9>~,~<p10>~,~<p11>~,~<p12>~,DontCheckForcePDFOutput,1) );
+		}
+		if (<num> >= 10 )
+		{
+			ReturnOnFailure( FlattenImage( ~<OrderID>~,~<$pcon.Image[Roll]>~,~<$pcon.Image[Frame]>~,<++itemID>,~<PrinterQueue>~,~<p3>~,~<p4>~,~<p5>~,~<p6>~,~<p7>~,~<p8>~,~<p9>~,~<p10>~,DontCheckForcePDFOutput,1) );
+		}
+		else if (<num> >= 8)
+		{
+			ReturnOnFailure( FlattenImage( ~<OrderID>~,~<$pcon.Image[Roll]>~,~<$pcon.Image[Frame]>~,<++itemID>,~<PrinterQueue>~,~<p3>~,~<p4>~,~<p5>~,~<p6>~,~<p7>~,~<p8>~,DontCheckForcePDFOutput,1) );
+		}
+		else if (<num> >= 6)
+		{
+			ReturnOnFailure( FlattenImage( ~<OrderID>~,~<$pcon.Image[Roll]>~,~<$pcon.Image[Frame]>~,<++itemID>,~<PrinterQueue>~,~<p3>~,~<p4>~,~<p5>~,~<p6>~,DontCheckForcePDFOutput,1) );
+		}
+		else if (<num> >= 4)
+		{
+			ReturnOnFailure( FlattenImage( ~<OrderID>~,~<$pcon.Image[Roll]>~,~<$pcon.Image[Frame]>~,<++itemID>,~<PrinterQueue>~,~<p3>~,~<p4>~,DontCheckForcePDFOutput,1) );
+		}
+		else
+		{
+			ReturnOnFailure( FlattenImage( ~<OrderID>~,~<$pcon.Image[Roll]>~,~<$pcon.Image[Frame]>~,<++itemID>,~<PrinterQueue>~,DontCheckForcePDFOutput,1 ) );
+		}
+	}
+
+	return TRUE;
+}
+
+NUMERIC GetBkgPathFromBkgID( DP2BGId, Orientation,&Path)
+{
+	Orientation=Numeric(~<Orientation>~);
+	Query = ~Select Path From Backgrounds Where ID='<DP2BGId>' And Orientation=<Orientation>~;
+	if ( !database( GetValuesFor,~<Query>~,Path ) )
+	{
+		database( GetErrorDescription,theErr );		
+		return Failure( Translate( ~Product <ProductID> does not have a layout. <theErr>~ ) );
+
+	}
+	return TRUE;
+}
+
+NUMERIC GetCustomerBGPath( OrderID, CustomerBGId, ProductType, Orientation,&Path )
+{
+	CustomerBGId = GetCustomerBGID( ~<OrderID>~, ~<CustomerBGId>~, ~<ProductType>~ );
+	ReturnOnFailure (GetBkgPathFromBkgID( ~<DP2BGId>~, ~<Orientation>~,Path));
+	return TRUE;
+}
+
+STR GetCustomerBGID( OrderID,CustomerBGId,ProductType )
+{
+
+	Rules = ~Background ID <CustomerBGId>~;
+
+	if ( GetInfoForOrders(~<OrderID>~,ThisCustomerID,ThisProgram,ThisInfoType) )
+	{
+		WhichCustomer	= ~<ThisCustomerID>~;
+		WhichProgram	= ~<ThisProgram>~;
+		WhichInfoType	= ~<ThisInfoType>~;	
+		CustomerBGId = BackgroundIDFor( WhichCustomer,WhichProgram,ProductType,WhichInfoType,CustomerBGId,Rules );
+	}
+	else	// NO IMAGES SO THEREFORE NO CUSTOMER
+	{
+		CustomerBGId = BackgroundIDFor( ~*~,~*~,~<ProductType>~,~*~,ID,Rules );
+	}
+
+	return ~<CustomerBGId>~;
+}
+
+NUMERIC GetInfoForOrders(OrderID,&CustomerID,&ProgramID,&SubjectInfoTable)
+{
+	Query = ~Select CustomerID,ProgramID,InfoType From Orders Where ID = '<OrderID>'~;
+	if ( !database(GetValuesFor,~<Query>~,CustomerID,ProgramID,Infotype ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( ~Failed to query the Orders table.\n\n<Query>\n\n<theErr>~ ) ); 
+	}
+	
+	SubjectInfoTable = ~SubjectInfo<InfoType>~;
+	
+	CustomerID	= IsNull(~<CustomerID>~) ? ~*~ : ~<CustomerID>~;
+	ProgramID	= IsNull(~<ProgramID>~) ? ~*~ : ~<ProgramID>~;
+	
+	return TRUE;
+}
+
+
+
+STR CreateOrderItemJobPath( OrderID,Item )
+{
+	JobPath = ~<$App.ShareDirectory>\OrderJobs\<OrderID>~;
+	JobName = ~Job_<OrderID>_<Item>~;
+
+	Directory( Create,~<JobPath>~ );
+
+	return ~<JobPath>\<JobName>~;
+}
+
+
+
+
+STR MakePreviewPathFromPath( Path,CreateDirectory )
+{
+	if ( $CreateDirectory )
+		{ Directory( Create,~<$str.$Path.Path>\Preview~ ); }
+
+	return ~<$str.$Path.Path>\Preview\<$str.$Path.FileName>.jpg~;
+}
+
+
+NUMERIC CreateBookMovie( OrderID,GroupID )
+{
+	UpdateBook(~<OrderID>~,~<GroupID>~,DeviceType,Animoto);
+	
+	num = 2;	// Arg 2 is the first optional arg
+
+	while ( DefinedAndNotNull( p<++num> ) )		// ANOTHER OPTIONAL ARG?
+	{
+		Attribute = ~<P<num>>~;
+		Value = ~<P<++num>>~;
+
+		AddBookAttribute(~<OrderID>~,<GroupID>,~<Attribute>~,~<Value>~);
+	}
+	
+	return Success(~Created Movie~);
+}
+
+
+NUMERIC EditOrderItemJobsForOrder( OrderID,AdditionalWhereClause )		// Add optional argument pairs 
+{
+	WhereClause = ~OrderID = '<OrderID>'~;
+	
+	if ( DefinedAndNotNull( AdditionalWhereClause ) )
+	{
+		WhereClause = ~<WhereClause> <AdditionalWhereClause>~;	// Example: EditOrderItemJobsForOrder( ~123456~,~AND Workflow = 'Thermal'~,Text,~Some Text~ );
+	}
+	
+	Query = ~Select ID From OrderItems Where <WhereClause> Order By ID~;
+
+	if ( !PGenconList( List,Connection,database,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( ~Failed to find items for Order <OrderID>. <theErr>~ );
+	}
+	
+	while ( List( GetNext,OrderItem ) )
+	{
+		ReturnOnFailure( EditOrderItemJob( ~<OrderID>~,~<$pcon.OrderItem[ID]>~,<VariableParameters> ) );
+	}
+	
+	return Success( ~Updated  the jobs for all OrderItems on Order <OrderID>~ );
+}
+
+
+NUMERIC EditOrderItemJob( OrderID,Item )	// Add optional argument pairs 
+{
+	return CreateOrderItemAndJob( ~<OrderID>~,~<Item>~,0,~*Edit$This$Order$Item*~,0,<VariableParameters> );
+}
+
+
+NUMERIC CreateOrderItemFromOrderItem( OrderID,Item,Sequence,Quantity,FromOrderID,ToItemID )		// Optional Args come after ToItemID
+{
+	return CreateOrderItemAndJob( ~<OrderID>~,~<Item>~,~<Sequence>~,~*From$Another$Order$Item*~,~<Quantity>~,~<FromOrderID>~,~<ToItemID>~,<VariableParameters> );
+}
+
+NUMERIC CreateOrderItemFromJobFile( OrderID,Item,Sequence,Quantity,JobPath )		// Optional Args come after JobPath
+{
+	return CreateOrderItemAndJob( ~<OrderID>~,~<Item>~,~<Sequence>~,~*Use$Existing$JobFile*~,~<Quantity>~,~UseJobFile~,~<JobPath>~,<VariableParameters> );
+}
+
+
+// Note this now uses the builtin method of Variable args rather than the p1,v1 method from above
+// So you no longer have to worry about how many optional parameters are being passed
+
+// Optional Args:
+//	Image,~Path To An Image~					Finds the next node with an IPrompt an assigns the path to its IFile: keyword
+//	Text,~The text to print~					Finds the next node with an TPrompt an assigns the text to its Text: keyword
+//	Node.NodeNameOrNumber.MinorKeyword,~Value~	Finds an Image or Text Node by NodeName or Number and sets the minor keyword to Value
+//  OutputNode.MinorKeyword,~Value~				Finds the active output node and sets any minor keyword to Value
+//  Keyword.MajorKeyword.MinorKeyword,~Value~	Finds the MinorKeyword of the specified MajorKeyword to value (for non Image and Text keywords) 
+//  Keyword.MajorKeyword,~Value~				Same as above. Used for Major keywords that have no Minor keywords 
+//  GroupID
+//  Subsequence
+//  ImagesOrderID,
+//  ImagesSubjectID
+
+gLastOrderItemID = 0;
+
+NUMERIC CreateOrderItemAndJob( OrderID,Item,Sequence,ProductID,Quantity )	// Optional Args come after Quantity
+{
+	ProductLayoutPath = ~~; IsPackage = FALSE; ProductType = ~~; PackageID = ~~; JobPath = ~~; PrinterQueue = ~~;
+	ResolveNodeMacros = GroupID = Subsequence = PackageGroup = WantPrintJob = EditThisOrderItem = 0;  WantOrderItem = 1; PrintPriority = 50;
+	ImagesOrderID = ~~; ImagesSubjectID = ~~;  Workflow = ~~;	ImageCount = TextCount = WantPreviewIcon = 0;
+
+	num = 5;	// Arg 6 is the first optional arg
+
+	if ( IsNull( ~<ProductID>~ ) )	// ARE WE CREATING A JOB FROM SCRATCH?
+	{
+		if ( !Document( Job,New,Job,5,5 ) )
+		{
+			return Failure( Translate( ~An error occured creating a new empty job~ ) );
+		}
+
+		Job( SetNoMessageBox,TRUE );
+	}
+	else if ( SimilarStr( ~<ProductID>~,~*From$Another$Order$Item*~ ) )
+	{
+		if ( !DefinedAndNotNull( p<++num> ) )		// ANOTHER OPTIONAL ARG?
+		{
+			return Failure( ~FromOrderID not specified when creating from another order item~ );
+		}
+		
+		FromOrderID = ~<P<num>>~;
+		
+		if ( !DefinedAndNotNull( p<++num> ) )		// ANOTHER OPTIONAL ARG?
+		{
+			return Failure( ~FromItemID not specified when creating from another order item~ );
+		}
+		
+		FromItemID = Numeric(~<P<num>>~);
+		
+		Query = ~Select ProductID,JobPath From OrderItems Where OrderID = '<FromOrderID>' AND ID = <FromItemID>~;
+
+		if ( !database(GetValuesFor,~<Query>~,ProductID,FromJobPath) )
+		{
+			return Failure( ~Failed to find OrderItem <FromOrderID>/<FromItemID>~ );
+		}
+		
+		Document( Job );
+
+		Job( Create,SetNoMessageBox,TRUE );
+
+		if ( !Job( ParseFile,~<FromJobPath>~ ) )
+		{
+			return Failure( Translate( ~An error occured while parsing OrderItem <FromOrderID>/<FromItemID>~ ) );
+		}
+	}
+	else if ( SimilarStr( ~<ProductID>~,~*Edit$This$Order$Item*~ ) && !IsNull(~<Item>~) )
+	{
+		Query = ~Select JobPath From OrderItems Where OrderID = '<OrderID>' AND ID = <Item>~;
+
+		if ( !database(GetValuesFor,~<Query>~,JobPath) )
+		{
+			return Failure( ~Failed to find OrderItem <OrderID>/<Item>~ );
+		}
+		
+		Document( Job );
+
+		Job( Create,SetNoMessageBox,TRUE );
+
+		if ( !Job( ParseFile,~<JobPath>~ ) )
+		{
+			return Failure( Translate( ~An error occured while parsing OrderItem <OrderID>/<Item>~ ) );
+		}
+		
+		EditThisOrderItem = TRUE;
+	}
+	else if ( SimilarStr( ~<ProductID>~,~*Use$Existing$JobFile*~ ) )	// Some else created the job file
+	{
+		// We will parse the JobFile down in the optional parameters section
+		ProductID = ~~;
+	}
+	else	// WE ARE USING AN EXISTING LAYOUT
+	{
+		if ( !GetLayoutForProductID( database,~<ProductID>~,ProductLayoutPath,IsPackage,ProductType,Workflow ) )
+		{
+			return Failure( Translate( ~Could not find layout for product <ProductID>~ ) );
+		}
+
+		Document( Job );
+
+		Job( Create );
+
+		Job( SetNoMessageBox,TRUE );
+
+		if ( !Job( ParseFile,~<ProductLayoutPath>~ ) )
+		{
+			return Failure( Translate( ~An error occured while parsing the layout at <ProductLayoutPath>~ ) );
+		}
+
+	}
+
+	if ( LocallyDefined(Job) )
+	{
+		if ( !Job( GetRenderList,0,RenderList ) )
+		{ 
+			return Failure( Translate( ~There was no render list for <JobPath>~ ) );
+		}
+	}
+
+	while ( DefinedAndNotNull( p<++num> ) )		// ANOTHER OPTIONAL ARG?
+	{
+		Operation = ~<P<num>>~;
+		Value = ~<P<++num>>~;
+
+		if ( SimilarSTR( ~<Operation>~,~UseJobFile~ ) )		// ,UseJobFile,~f:\somepath~,
+		{
+			JobPath = ~<Value>~;
+
+			ForgetLocal( Job,RenderList );
+
+			Document( Job );
+			Job( Create );
+			Job( SetNoMessageBox,TRUE );
+
+			if ( !Job( ParseFile,~<JobPath>~ ) )
+			{
+				return Failure( Translate( ~An error occured while parsing the job at <JobPath>~ ) );
+			}
+
+			if ( !Job( GetRenderList,0,RenderList ) )
+			{ 
+				return Failure( Translate( ~There was no render list from <JobPath>~ ) );
+			}
+		}
+		else if ( SimilarSTR( ~<Operation>~,~Image~ ) )		// ,Image,~f:\somepath~,
+		{
+			if ( RenderList( GetNonNullNode,~IPrompt:~,<ImageCount++>,TheNode ) )
+			{
+				TheNode( Set,~IFile:~,~<Value>~ );
+				LastNodeID = TheNode(GetNumeric,~IntID:~);
+				ForgetLocal( TheNode );
+			}
+		}
+		else if ( SimilarSTR( ~<Operation>~,~Text~ ) )	// ,Text,~Hi There~,
+		{
+			if ( RenderList( GetNonNullNode,~TPrompt:~,<TextCount++>,TheNode ) )
+			{
+				TheNode( Set,~Text:~,~<Value>~ );
+				LastNodeID = TheNode(GetNumeric,~IntID:~);
+				ForgetLocal( TheNode );
+			}
+		}
+		else if ( SimilarSTR( ~<Operation>~,~Scale~ ) )	// ,Scale,8    Scales the layout to a new width
+		{
+			if ( !RenderList( Scale,~<Value>~,0 ) )
+			{
+				return Failure( Translate( ~Failed to scale layout to Width of <Width>~ ) );
+			}
+		}
+		else if ( SimilarSTR( ~<Operation>~,~ScaleWL~ ) )	// ,Scale,8,5    Scales the layout to a new width and length
+		{
+			L = ~<P<++num>>~;
+
+			if ( !RenderList( Scale,~<Value>~,~<L>~ ) )
+			{
+				return Failure( Translate( ~Failed to scale layout to Width of <Width> and Length of <L>~ ) );
+			}
+		}
+		else if ( String( BeginsWith,~NODES.~,~<$Str.$Operation.upper>~ ) != ~~ )	// ,~Nodes.IPrompt.IColor~,~0 30 40 50~
+		{
+			GetTokens( ~<Operation>~,~.~,Node,NonNullKeyword,Keyword );
+
+			NodeIndex = 0;
+
+			while ( RenderList( GetNonNullNode,~<NonNullKeyword>:~,<NodeIndex++>,TheNode ) )
+			{
+				TheNode( Set,~<Keyword>:~,~<Value>~ );
+				LastNodeID = TheNode(GetNumeric,~IntID:~);
+				ForgetLocal( TheNode );
+			}
+		}
+		else if ( String( BeginsWith,~NODESHAVING.~,~<$Str.$Operation.upper>~ ) != ~~ )	// ,~NodesHaving.ILabel.Yes.IColor~,~0 30 40 50~
+		{
+			GetTokens( ~<Operation>~,~.~,Node,NonNullKeyword,KeywordValue,Keyword );
+
+			NodeIndex = 0;
+
+			while ( RenderList( GetNonNullNode,~<NonNullKeyword>:~,<NodeIndex++>,TheNode ) )
+			{
+				if ( TheNode( Get,~<NonNullKeyword>:~,NonNullValue ) )
+				{
+					if ( SimilarStr( ~<NonNullValue>~,~<KeywordValue>~ ) )
+					{
+						TheNode( Set,~<Keyword>:~,~<Value>~ );
+						LastNodeID = TheNode(GetNumeric,~IntID:~);
+					}
+				}
+
+				ForgetLocal( TheNode );
+			}
+		}
+		else if ( String( BeginsWith,~NODE.~,~<$Str.$Operation.upper>~ ) != ~~ || String( BeginsWith,~NODENAME.~,~<$Str.$Operation.upper>~ ) != ~~ )	// ,~Node.1.Ifile~,~<path>~ or ~NodeName.1.Ifile~,~<path>~
+		{
+			GetTokens( ~<Operation>~,~.~,Node,ID,Keyword,OptionalNodeType );// OptionalNodeType = IC or IL
+
+			if ( SimilarStr(~<ID>~,~Main~,~-9001~)  )				// IS THIS THE MAIN NODE?
+			{
+				if ( !RenderList( GetMainNode,TheNode ) )
+				{
+					return Failure( Translate( ~Failed to get the main node~ ) );
+				}
+			}
+			else if ( !RenderList( GetNodeByID,~<ID>~,0,TheNode ) )	// DOES THE DESIRED NODE EXIST?
+			{
+				if (IsNull(~<OptionalNodeType>~))
+				{
+					OptionalNodeType = ~IC~;
+				}
+				else if (!SimilarStr(~<OptionalNodeType>~,~IL~,~IC~,~ImageLayout~,~ImageContent~))
+				{
+					OptionalNodeType = ~IC~;
+				}
+				if ( !RenderList(AddNode,~<ID>~,~<OptionalNodeType>:~,TheNode ) )	// NOPE, TRY TO ADD IT
+				{
+					return Failure( Translate( ~Failed to add node <ID>~ ) );
+				}
+			}
+
+			TheNode( Set,~<Keyword>:~,~<Value>~ );
+			LastNodeID = TheNode(GetNumeric,~IntID:~);
+			ForgetLocal( TheNode );
+		}
+		else if ( String( BeginsWith,~OUTPUTNODE~,~<$Str.$Operation.upper>~ ) != ~~ )	// ,~OutputNode.Annotation1~,~A backprint string~
+		{
+			GetTokens( ~<Operation>~,~.~,Node,Keyword );
+
+			if ( RenderList( GetOutputNode,OutputNode ) )
+			{
+				OutputNode( Set,~<Keyword>:~,~<Value>~ );
+				LastNodeID = OutputNode(GetNumeric,~IntID:~);
+				ForgetLocal( OutputNode );
+			}
+		}
+		else if ( String( BeginsWith,~ADDOUTPUTNODE~,~<$Str.$Operation.upper>~ ) != ~~ )	// ,~AddOutputNode.SaveImage~,~~,
+		{
+			GetTokens( ~<Operation>~,~.~,Node,Keyword );
+			NodeID = ~<$[GENCONS/KEYWORDS].<Keyword>:[DEFAULTID]>~;
+
+			if ( !RenderList( GetOutputNode,OutputNode ) )
+			{
+				if ( !RenderList(AddNode,~<NodeID>~,~<Keyword>:~,TheNode ) )	// NOPE, TRY TO ADD IT
+				{
+					return Failure( Translate( ~Failed to add node <NodeID>~ ) );
+				}
+				theNode(SetValue,~Enabled:~,1);
+			}
+			else
+			{
+				ForgetLocal( OutputNode );
+			}
+		}
+		else if ( String( BeginsWith,~KEYWORD~,~<$Str.$Operation.upper>~ ) != ~~ )	// ,~Keyword.AfterEffects.MakeGrayScale~,TRUE
+		{
+			GetTokens( ~<Operation>~,~.~,Major,Keyword,Attribute );
+
+			NodeID = ~<$[GENCONS/KEYWORDS].<Keyword>:[DEFAULTID]>~;
+
+			if ( IsNull( ~<NodeID>~ ) )
+			{ 
+				return Failure( Translate( ~<Operation> is invalid~ ) );
+			}
+ 
+			if ( Numeric(~<NodeID>~) >= 0 )
+			{ 
+				return Failure( Translate( ~<Keyword> is not a major keyword~ ) );
+			}
+ 
+			if ( RenderList( GetNodeByID,<NodeID>,0,Node ) )	
+			{
+				Attribute = IsNull(~<Attribute>~) ? ~<Keyword>:~ : ~<Attribute>:~;
+				Node( Set,~<Attribute>~,~<Value>~ );
+				LastNodeID = Node(GetNumeric,~IntID:~);
+				ForgetLocal( Node );
+			}
+		}
+		else if ( SimilarStr( ~Function~,~<Operation>~ ) )	// ,Function,~MyFunction(RenderList)~
+		{
+			<Value>;
+		}
+		else if ( String( BeginsWith, ~MOVEAFTERNODE~,~<$Str.$Operation.upper>~ )  != ~~ )	// ~MoveAfterNode.NodeNumber of Insertion point~, ~NodeNumber of node to move~
+																				// ~MoveAfterNode.-9001~,~10000~  
+																				// or MoveAfterNode.Background,10005 (where Background is the node name) 
+																				// or MoveAfterNode.10000,10005 
+		{
+			GetTokens( ~<Operation>~,~.~,theOperation,AfterNode );
+			AfterNodeNumber = ~<AfterNode>~;
+			GetTokens( ~<Value>~,~.~,MovedNodeNumber );
+			if (!RenderList(MoveAfterNode,~<AfterNodeNumber>~,~<MovedNodeNumber>~))
+			{
+				return Failure( Translate( ~Could not move node number <MovedNodeNumber> After node <AfterNodeNumber>~. ) );
+			}
+		}
+		else if ( String( BeginsWith, ~MOVEBEFORENODE~,~<$Str.$Operation.upper>~ )  != ~~ )	// ~MoveBeforeNode.NodeNumber of Insertion point~, ~NodeNumber of node to move~
+																				// or MoveBeforeNode.10000,10005 
+		{
+			GetTokens( ~<Operation>~,~.~,theOperation,BeforeNode );
+			BeforeNodeNumber = ~<BeforeNode>~;
+			GetTokens( ~<Value>~,~.~,MovedNodeNumber );
+			if (!RenderList(MoveBeforeNode,~<BeforeNodeNumber>~,~<MovedNodeNumber>~))
+			{
+				return Failure( Translate( ~Could not move node number <MovedNodeNumber> Before node <BeforeNodeNumber>~. ) );
+			}
+		}
+		else if ( String( BeginsWith,~REMOVEKEYWORD.~,~<$Str.$Operation.upper>~ ) != ~~ )	// ,~RemoveKeyword.ID~,Keyword
+		{
+			GetTokens( ~<Operation>~,~.~,Node,ID );
+
+			if ( SimilarStr(~<ID>~,~Main~,~-9001~)  )				// IS THIS THE MAIN NODE?
+			{
+				if ( !RenderList( GetMainNode,TheNode ) )
+				{
+					return Failure( Translate( ~Failed to get the main node~ ) );
+				}
+			}
+			else if ( !RenderList( GetNodeByID,~<ID>~,0,TheNode ) )	// DOES THE DESIRED NODE EXIST?
+			{
+				return Failure( Translate( ~Failed to find node <ID>~ ) );
+			}
+
+			TheNode( ResetStatus,~<Value>:~,~255~ );
+
+			LastNodeID = ~<ID>~;
+		}
+		else if ( String( BeginsWith,~APPLYSTYLE~,~<$Str.$Operation.upper>~ ) != ~~ )	// ,~ApplyStyle.10000.CopyIFile.CopyText~,~PathToStyle~  CopyIFile and CopyText are optional
+		{
+			copyIFile = copyText = 0;
+
+			numTokens = GetTokens( ~<Operation>~,~.~,theOperation,NodeID,OptionalParam1,OptionalParam2 );
+
+			if ( <numTokens> >= 3 && SimilarStr( ~<OptionalParam1>~,~CopyIFile~,~CopyText~ ) )
+			{
+				<OptionalParam1> = TRUE;
+			}
+
+			if ( <numTokens> >= 4 && SimilarStr( ~<OptionalParam2>~,~CopyIFile~,~CopyText~ ) )
+			{
+				<OptionalParam2> = TRUE;
+			}
+
+			if ( !RenderList( GetNodeByID,~<NodeID>~,0,TheNode ) )
+			{
+				return Failure( ~Failed to find Node <NodeID>~ );
+			}
+
+			NodeID = ~<$con.TheNode[INTID:]>~;
+
+			if ( !RenderList( ApplyStyle, ~<Value>~, ~<$con.TheNode[INTID:]>~, ~<copyIFile>~, ~<copyText>~ ) )
+			{
+				return Failure( ~Failed to apply style <StylePath> to Node <$con.TheNode[INTID:]>~ );
+			}
+		}
+		else if ( SimilarStr( ~Execute~,~<Operation>~ ) )			// ,Execute,~MyCode~  execute the contents of a variable
+		{
+			ExecuteContentsOf(Value,TRUE);
+		}
+		else if ( SimilarStr( ~PreviewIcon~,~<Operation>~ ) )		// ,PreviewIcon,TRUE
+		{
+			WantPreviewIcon = ~<Value>~;
+		}
+		else if ( SimilarStr( ~ProductID~,~<Operation>~ ) )			// ,ProductID,~4x5~
+		{
+			ProductID = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~GroupID~,~BookID~ ) )	// an integer or null.  If null, calculate the next GroupID for the Order.
+		{
+			GroupID = ~<$Str.$Value.numeric>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~Subsequence~ ) )		// an integer
+		{
+			Subsequence = ~<$Str.$Value.numeric>~;
+		}
+		else if ( SimilarStr( ~PackageID~,~<Operation>~ ) )			// ,PackageID,~A~
+		{
+			PackageID = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~PackageGroup~ ) )		// an integer
+		{
+			PackageGroup = ~<$Str.$Value.numeric>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~ProductType~ ) )		// a string
+		{
+			ProductType = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~Workflow~ ) )		// a string
+		{
+			Workflow = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~PrinterQueue~ ) )		// a string.  not used for creating OrderItems
+		{
+			PrinterQueue = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~PrintPriority~ ) )		// an integer
+		{
+			PrintPriority = ~<$Str.$Value.numeric>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~JobPath~ ) )			// a string.  Passed in JobPath instead of calculated
+		{
+			JobPath = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~WantOrderItem~ ) )		// an integer.  Don't add the order item to the database if FALSE
+		{
+			WantOrderItem = ~<$Str.$Value.numeric>~;
+			
+			if ( <WantOrderItem> )
+			{
+				WantPrintJob = FALSE;
+			}
+		}
+		else if ( SimilarSTR( ~<Operation>~,~WantPrintJob~ ) )		// an integer.  This job goes straight to the Printer.  Not added as an order item
+		{
+			WantPrintJob = ~<$Str.$Value.numeric>~;
+			
+			if ( <WantPrintJob> )
+			{
+				WantOrderItem = FALSE;
+				
+				if ( IsNull(~<PrintBatchID>~) )
+				{
+					PrintBatchID = UniquePrintBatchID();
+					PrintBatchSeq = ~0~;
+				}
+			}
+		}
+		else if ( SimilarSTR( ~<Operation>~,~InsertContentsOf~ ) )	// ,InsertContentsOf,OrderID,OrderItemID,Node  Inserts the contents of OrderItem at OrderID/OrderItemID into Node having NodeNumber or NodeName
+		{
+			SourceOrderID = ~<Value>~;
+			OrderItemID = ~<P<++num>>~;
+			DestNode = ~<P<++num>>~;
+			Angle = 0;
+			Mode = F;
+			if ( !InsertContentsOf(RenderList, ~<SourceOrderID>~,~<OrderItemID>~,~<DestNode>~,~<Mode>~,~<Angle>~))
+			{
+				return Failure( Translate( ~Failed to Insert Resized order item: Source Order ID = <SourceOrderID>, Source Item ID = <OrderItemID>, Into Node <DestNode>~ ) );
+			}
+		}
+		else if ( SimilarSTR( ~<Operation>~,~InsertContentsOfRotated~ ) )	// InsertContentsOfRotated,OrderID,OrderItemID,Node,Mode  Inserts and rotates the contents of OrderItem at OrderID/OrderItemID into Node having NodeNumber or NodeName
+		{
+			SourceOrderID = ~<Value>~;
+			OrderItemID = ~<P<++num>>~;// this is the id of the existing item that is to be inserted
+			DestNode = ~<P<++num>>~;
+			Mode = ~<P<++num>>~;	// C (crop), F (fit), S (stretch)
+			Angle = ~<P<++num>>~;	// must be 0,90,180 or 270
+			Dummy = ~<P<++num>>~;	// Reserved for future use
+
+			if ( !InsertContentsOf(RenderList, ~<SourceOrderID>~,~<OrderItemID>~,~<DestNode>~,~<Mode>~,~<Angle>~))
+			{
+				return Failure( Translate( ~Failed to Insert Resized and Rotated order item: Source Order ID = <SourceOrderID>, Source Item ID = <OrderItemID>, Into Node <DestNode>~ ) );
+			}
+		}
+		else if ( SimilarSTR( ~<Operation>~,~ImagesOrderID~ ) )		// a string
+		{
+			ImagesOrderID = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~ImagesSubjectID~ ) )		// a string
+		{
+			ImagesSubjectID = ~<Value>~;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~ResetCount~ ) )			// ResetCount,IPrompt
+		{
+			<Value>Count = 0;
+		}
+		else if ( SimilarSTR( ~<Operation>~,~ResolveNodeMacros~ ) )			// ResolveNodeMacros,TRUE
+		{
+			ResolveNodeMacros = Numeric(~<Value~);
+		}
+		else if ( SimilarSTR( ~<Operation>~,~FindNextNonNullNodeID~ ) )				// ,FindNextNonNullNodeID,IPrompt~,    Sets LastNodeID
+		{
+			if ( RenderList( GetNonNullNode,~<Value>:~,<<Value>Count++>,TheNode ) )
+			{
+				LastNodeID = TheNode(GetNumeric,~IntID:~);
+				ForgetLocal( TheNode );
+			}
+		}
+		else if ( SimilarSTR( ~<Operation>~,~ApplyKeywordsFromFile~ ) )
+		{
+			ForgetLocal( OptionKeywordsJob,applyFromRenderList );
+
+			Document( OptionKeywordsJob );
+
+			OptionKeywordsJob( Create );
+
+			if ( !OptionKeywordsJob( SetNoMessageBox,TRUE,ParseFile,~<Value>~ ) )
+			{
+				return Failure( ~Could not parse job: <Value>~);
+			}
+
+			if ( !OptionKeywordsJob( GetRenderList,0,applyFromRenderList ) )
+			{ 
+				return Failure(~There is no render list for <Value>~);
+			}
+			
+			if ( !RenderList( ApplyKeywordsFrom,applyFromRenderList ) )
+			{
+				return Failure( ~Failed to apply keywords from <Value>~ );
+			}
+		}
+		else if ( SimilarSTR( ~<Operation>~,~Call~ ) )		// Call,MyOwnRoutine
+		{
+			if ( FunctionDefined( ~<Value>~ ) )
+			{
+				ReturnOnFailure( <Value>( RenderList,Job,~<OrderID>~,~<Item>~,~<Sequence>~,~<ProductID>~,~<Quantity>~ );
+			}
+			else
+			{
+				return Failure( ~Routine <Value> does not exist~ );
+			}
+		}
+		else
+		{
+			return Failure( Translate( ~<Operation> is invalid in CreateOrderItemAndJob()~ ) );
+		}
+	}
+
+	if ( ~<Sequence>~ == ~~ )
+	{
+		if ( <WantOrderItem> )
+		{
+			Sequence = CalcNextForOrderItem( database,~<OrderID>~,Sequence );
+		}
+		else if ( <WantPrintJob> )
+		{
+			Sequence = <++PrintBatchSeq>;
+		}
+		else
+		{
+			Sequence = 1;
+		}
+	}
+	
+	if ( ~<Item>~ == ~~ )
+	{
+		if ( <WantOrderItem> )
+		{
+			Item = CalcNextForOrderItem( database,~<OrderID>~,ID );
+		}
+		else if ( <WantPrintJob> )
+		{
+			Item = ~<Sequence>~;
+		}
+		else
+		{
+			Item = 1;
+		}
+	}
+	
+	if ( IsNull(~<JobPath>~) )
+	{
+		if ( <WantOrderItem> )
+		{
+			JobPath = CreateOrderItemJobPath( ~<OrderID>~,~<Item>~ );
+		}
+		else if ( <WantPrintJob> )
+		{
+			CreateJobQueuePath( ~<OrderID>~,~<Item>~,~<PrinterQueue>~,JobPath );
+		}
+		else
+		{
+			return Failure( ~No JobPath Specified~ );
+		}
+	}
+
+	RenderList( SetFileType,~Job~ );
+
+	RenderList( SetOrderID,~<OrderID>~ );
+	RenderList( SetItemID,~<Item>~ );
+	RenderList( SetConnection,database );
+	
+	retval = TRUE;
+	
+	if ( <EditThisOrderItem> )
+	{
+		// Nothing to do here for now
+	}
+	else if ( <WantOrderItem> )
+	{
+		retval = AddOrderItem( ~<OrderID>~,~<Item>~,~<Sequence>~,~<Quantity>~,~<JobPath>~,~<ProductID>~,~Ready~,~0~,<GroupID>,<Subsequence>,~<PackageID>~,~<PackageGroup>~,~<ProductType>~,~<ImagesOrderID>~,~<ImagesSubjectID>~,~<Workflow>~ );
+	}
+	else if ( <WantPrintJob> )
+	{
+		retval = AddJobToDatabase( ~<PrintBatchID>~,~<OrderID>~,~<Item>~,~<Quantity>~,~<Sequence>~,~<JobPath>~,~<PrinterQueue>~,~<PrintPriority>~) ;
+	}
+	
+	if ( <retval> )
+	{
+		if ( !RenderList( WriteJob,~<JobPath>~ ) )
+		{ 
+			return Failure( Translate( ~Failed to write <JobPath>~ ) );
+		}
+
+		if ( <ResolveNodeMacros> )
+		{
+			RenderList( ResolveAllMacos );	// We need the job file to already exist for some macros to work
+
+			if ( !RenderList( WriteJob,~<JobPath>~ ) )
+			{ 
+				return Failure( Translate( ~Failed to write <JobPath> after ResolveAllMacos~ ) );
+			}
+		}
+
+		ProductPreviewPath = MakePreviewPathFromPath( ~<JobPath>~,TRUE );
+
+		Files( Delete,~<ProductPreviewPath>~ );
+
+		if ( <WantPreviewIcon> )
+		{
+			Document( previewJob );		// Some macros depend on the JobPath being correct
+
+			previewJob( Create,SetNoMessageBox,TRUE );
+
+			if ( !previewJob( ParseFile,~<JobPath>~ ) )
+			{
+				return Failure( Translate( ~An error occured while parsing the layout at <JobPath>~ ) );
+			}
+
+			if ( !previewJob( GetRenderList,0,previewRenderList ) )
+			{ 
+				return Failure( Translate( ~There was no render list from <JobPath>~ ) );
+			}
+
+			previewRenderList( CreatePreviewIcon,~<JobPath>~ );
+		}
+	}
+
+	gLastOrderItemID = ~<Item>~;
+
+	return <retval>;
+}
+
+
+NUMERIC EditJobsForOrder( OrderID )		// Add optional argument pairs 
+{
+	Query = ~Select ID From OrderItems Where OrderID = '<OrderID>' Order By ID~;
+
+	if ( !PgenconList( List,Connection,database,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( ~Failed to find items for Order <OrderID>. <theErr>~ );
+	}
+	
+	while ( List( GetNext,OrderItem ) )
+	{
+		ReturnOnFailure( EditJobForOrderItem( ~<OrderID>~,~<$pcon.OrderItem[ID]>~,<VariableParameters> ) );
+	}
+	
+	return Success( ~Updated  the jobs for all OrderItems on Order <OrderID>~ );
+}
+
+
+NUMERIC EditJobForOrderItem( OrderID,ItemID )	// Add optional argument pairs 
+{
+	Query = ~Select JobPath From OrderItems Where OrderID = '<OrderID>' AND ID = '<ItemID>'~;
+
+	if ( !database( GetValuesFor,~<Query>~,JobPath ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( ~Could not find OrderItem <OrderID>/<ItemID>~ );
+	}
+	
+	ReturnOnFailure( EditJobAt( ~<JobPath>~,<VariableParameters> ) );
+	
+	return Success( ~Updated  the job OrderItem <OrderID>/<ItemID>~ );
+}
+
+
+NUMERIC EditJobAt( JobPath )	// Add optional argument pairs .. Only works on the OutputNode so far.
+{
+	Document( Job );
+
+	Job( Create,SetNoMessageBox,TRUE );
+
+	if ( !Job( ParseFile,~<JobPath>~ ) )
+	{
+		return Failure( Translate( ~An error occured while parsing the layout at <JobPath>~ ) );
+	}
+
+	if ( !Job( GetRenderList,0,RenderList ) )
+	{ 
+		return Failure( Translate( ~There was no render list for <JobPath>~ ) );
+	}
+	
+	WantPreviewIcon = 0; num = 1;	// Arg 2 is the first optional arg
+	
+	while ( DefinedAndNotNull( p<++num> ) )		// ANOTHER OPTIONAL ARG?
+	{
+		Operation = ~<P<num>>~;
+		Value = ~<P<++num>>~;
+
+		if ( String( BeginsWith,~OUTPUTNODE~,~<$Str.$Operation.upper>~ ) != ~~ )	// ,~OutputNode.QueueName~,~MyNewQueueName~
+		{
+			GetTokens( ~<Operation>~,~.~,Node,Keyword );
+
+			if ( RenderList( GetOutputNode,OutputNode ) )
+			{
+				OutputNode( Set,~<Keyword>:~,~<Value>~ );
+				ForgetLocal( OutputNode );
+			}
+		}
+		else if ( SimilarSTR( ~<Operation>~,~Image~ ) )				// ,Image,~f:\somepath~,
+		{
+			if ( RenderList( GetNonNullNode,~IPrompt:~,<ImageCount++>,TheNode ) )
+			{
+				TheNode( Set,~IFile:~,~<Value>~ );
+				LastNodeID = TheNode(GetNumeric,~IntID:~);
+				ForgetLocal( TheNode );
+			}
+		}
+		else if ( SimilarSTR( ~<Operation>~,~Text~ ) )			// ,Text,~Hi There~,
+		{
+			if ( RenderList( GetNonNullNode,~TPrompt:~,<TextCount++>,TheNode ) )
+			{
+				TheNode( Set,~Text:~,~<Value>~ );
+				LastNodeID = TheNode(GetNumeric,~IntID:~);
+				ForgetLocal( TheNode );
+			}
+		}
+		else if ( String( BeginsWith,~NODE.~,~<$Str.$Operation.upper>~ ) != ~~ || String( BeginsWith,~NODENAME.~,~<$Str.$Operation.upper>~ ) != ~~ )	// ,~Node.1.Ifile~,~<path>~ or ~NodeName.1.Ifile~,~<path>~
+		{
+			GetTokens( ~<Operation>~,~.~,Node,ID,Keyword );
+
+			if ( SimilarStr(~<ID>~,~Main~,~-9001~)  )				// IS THIS THE MAIN NODE?
+			{
+				if ( !RenderList( GetMainNode,TheNode ) )
+				{
+					return Failure( Translate( ~Failed to get the main node~ ) );
+				}
+			}
+			else if ( !RenderList( GetNodeByID,~<ID>~,0,TheNode ) )	// DOES THE DESIRED NODE EXIST?
+			{
+				if ( !RenderList(AddNode,~<ID>~,~IC:~,TheNode ) )	// NOPE, TRY TO ADD IT
+				{
+					return Failure( Translate( ~Failed to add node <ID>~ ) );
+				}
+			}
+
+			TheNode( Set,~<Keyword>:~,~<Value>~ );
+			LastNodeID = TheNode(GetNumeric,~IntID:~);
+			ForgetLocal( TheNode );
+		}
+		else if ( SimilarStr( ~PreviewIcon~,~<Operation>~ ) )			// ,PreviewIcon,TRUE
+		{
+			WantPreviewIcon = ~<Value>~;
+		}
+	}
+	
+	if ( !RenderList( WriteJob,~<JobPath>~ ) )
+	{ 
+		return Failure( Translate( ~Failed to write <JobPath>~ ) );
+	}
+
+	if ( <WantPreviewIcon> )
+	{
+		ProductPreviewPath = MakePreviewPathFromPath( ~<JobPath>~,TRUE );
+
+		Files( Delete,~<ProductPreviewPath>~ );
+
+		RenderList( CreatePreviewIcon,~<JobPath>~ );
+	}
+	
+	return TRUE;
+}
+
+NUMERIC InsertContentsOf(&RenderList, SourceOrderID,SourceItemID,DestNode,Mode,Angle)
+{
+	SourceItemID = ~<$Str.$SourceItemID.numeric>~;
+	Query = ~Select JobPath From OrderItems Where OrderID = '<SourceOrderID>' AND ID = '<SourceItemID>'~;
+	if ( !PGenConList( List,Connection,database,Cursor,Static,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		Warning( Translate(~Query Failed <Query>. <theErr>~) );
+		return -1;
+	}
+	if (List( GetFirst,SourceOrderItem ))
+	{
+		SourceOrderItem(GetValue,JobPath,SourcePath);
+
+		if (!RenderList(InsertResizedLayoutIntoNode,~<SourcePath>~,~<DestNode>~,Numeric(~<Angle>~),~<Mode>~))
+		{ 
+			return FALSE; 
+		}         
+	}
+
+	return TRUE;
+}
+
+
+STR		AnotherOrderItemNodeValue( OrderID,ItemID,NodeNum,attr )
+{
+	if ( GetAnotherOrderItemNodeValue( ~<OrderID>~,~<ItemID>~,~<NodeNum>~,~<attr>~,Value ) )
+	{
+		return ~<value>~;
+	}
+	
+	return ~~;
+}
+
+
+NUMERIC GetAnotherOrderItemNodeValue( OrderID,ItemID,NodeNum,attr,&Value )
+{
+	Query = ~Select JobPath From OrderItems Where OrderID = '<OrderID>' AND ID = <ItemID>~;
+ 
+    if ( !db( GetValuesFor,~<Query>~,theJobPath ) )
+    {
+		return Failure( ~Failed to find OrderItem <OrderID>/<ItemID>~ );
+    }
+    
+    Document( aJob );
+
+    aJob( Create );
+
+    aJob( SetNoMessageBox,TRUE );
+
+    if ( !aJob( ParseFile,~<theJobPath>~ ) )
+    {
+		return Failure( ~Failed to parse <theJobPath>~ );
+    }
+
+    if ( !aJob( GetRenderList,0,aRenderList ) )
+    { 
+		return Failure( ~Failed to get the render list for <theJobPath>~ );
+    }
+    
+    if ( !aRenderList(GetResolvedNodeValue,~<NodeNum>~,~<attr>:~,Value) )
+    {
+		if ( !aRenderList(GetResolvedNodeValue,~<NodeNum>~,~<attr>~,Value) )
+		{
+			return Failure( ~Failed to find Node <NodeNum>/<attr> or <attr>: in <theJobPath>~ );
+		}
+	}
+
+    return TRUE;
+}
+
+
+NUMERIC CreateOrderItemsForPackage1( OrderID,PackageID,PackageQty,Sequence,ImagesOrderID,Roll,Frame ) // Add variable parameters for CreateOrderItemAndJob() as needed
+{
+	Query = ~Select * From Packages Where PackageID = '<PackageID>' Order By Sequence~;
+
+	if ( !PGenConList( PackageList,Connection,database,Cursor,Static,Query,~<Query>~ ) )
+	{
+		database( GetErrorDescription,theErr );
+		Warning( Translate(~Query Failed <Query>. <theErr>~) );
+		return -1;
+	}
+
+	if ( ~<Sequence>~ == ~~ )
+	{
+		Sequence = CalcNextForOrderItem( database,~<OrderID>~,Sequence );
+	}
+	
+	Item = CalcNextForOrderItem( database,~<OrderID>~,ID );
+
+	PackageGroup = UniquePackageGroup(database,~<OrderID>~);
+	
+	orgPackageQty = ~<PackageQty>~;
+
+	while ( <PackageQty--> > 0 )
+	{
+		more = PackageList( GetFirst,Product );
+
+		while ( <more> )
+		{
+			Quantity = ~<$pcon.Product[Quantity]>~;
+			ProductID = ~<$pcon.Product[ProductID]>~;
+
+			WhichImage = ~<$@Image.PathOfOrderRollFrame['<ImagesOrderID>','<Roll>','<Frame>']>~;
+
+			if ( IsContentsNull(VariableParameters) )
+			{
+				CreateOrderItemAndJob( ~<OrderID>~,~<Item++>~,~<Sequence++>~,~<ProductID>~,~<Quantity>~,Image,~<WhichImage>~,PackageID,~<PackageID>~,PackageGroup,~<PackageGroup>~ );
+			} 
+			else
+			{
+				CreateOrderItemAndJob( ~<OrderID>~,~<Item++>~,~<Sequence++>~,~<ProductID>~,~<Quantity>~,Image,~<WhichImage>~,PackageID,~<PackageID>~,PackageGroup,~<PackageGroup>~,<VariableParameters> );
+			}
+
+			more = PackageList( GetNext,Product );
+		}
+	}
+
+	return Success( ~Created Package <PackageID>. Qty <orgPackageQty>.  Image <OrderID>,<Roll>,<Frame>~ );
+}
+
+NUMERIC CreateOrderItemsForPackage( PackageID,PackageQty,Sequence,OrderID,Roll,Frame ) // Add variable parameters for CreateOrderItemAndJob() as needed
+{
+	GetImagesOrderID(~<OrderID>~,theImagesOrderID);
+	if (<NumVariableParameters> == 0)
+	{
+		return CreateOrderItemsForPackage1(~<OrderID>~,~<PackageID>~,~<PackageQty>~,~<Sequence>~,~<theImagesOrderID>~,~<Roll>~,~<Frame>~ );
+	}
+	else
+	{
+		return CreateOrderItemsForPackage1(~<OrderID>~,~<PackageID>~,~<PackageQty>~,~<Sequence>~,~<theImagesOrderID>~,~<Roll>~,~<Frame>~, <VariableParameters> );
+	}
+}
+
+VOID GetImagesOrderID( theOrderID, &theImagesOrderID )
+{
+	theImagesOrderID = ~~;
+
+	Query = ~Select ImagesOrderID From Orders Where ID = '<theOrderID>'~;
+	Success = Ado( dBase,Connect,GetValuesFor,~<Query>~,theImagesOrderID ) != FALSE;
+
+	if (~<theImagesOrderID>~ == ~~)
+	{
+		theImagesOrderID = ~<theOrderId>~;
+	}
+
+}
+
+
+NUMERIC CalcNextForOrderItem( &dbase,OrderID,WhichField )
+{
+	NextSequence = 0;
+
+	if ( dbase( CMD,~Select MAX(<WhichField>) From OrderItems Where OrderID = '<OrderID>'~,MaxSequence ) )
+	{ 
+		NextSequence = ~<$rs.MaxSequence[#0]>~ == ~~ ? ~0~ : ~<$rs.MaxSequence[#0]>~; 
+	}
+
+	return $NextSequence + 1;
+}
+
+NUMERIC CalcNextForBookAttributes( &dbase,OrderID,GroupID,WhichField )
+{
+	NextSequence = 0;
+
+	if ( dbase( CMD,~Select MAX(<WhichField>) From BookAttributes Where OrderID = '<OrderID>' And GroupID = <GroupID> ~,MaxSequence ) )
+	{ 
+		NextSequence = ~<$rs.MaxSequence[#0]>~ == ~~ ? ~0~ : ~<$rs.MaxSequence[#0]>~; 
+	}
+
+	return $NextSequence + 10;
+}
+
+NUMERIC SetImagesForOrderItemsToAdjust( OrderID )
+{
+BeginBUFFER( UpdateCmd,TRUE );
+	Update Images Set Inspect = 1 From Images
+	IM Inner Join OrderItemImages OII
+	On IM.OrderID = OII.OrderID And IM.Roll = OII.Roll And IM.Frame = OII.Frame
+	And OII.ItemOrderID = '<OrderID>'
+EndBUFFER();
+
+	if ( !database( Cmd,~<UpdateCmd>~ ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( ~Unable to set images to adjust for image in Order <OrderID>: <theErr>  <Cmd>~ ) );
+	}
+
+	return TRUE;
+}
+
+NUMERIC SetImagesForOrderItemToAdjust( OrderID,ItemID )
+{
+BeginBUFFER( UpdateCmd,TRUE );
+	Update Images Set Inspect = 1 From Images
+	IM Inner Join OrderItemImages OII
+	On IM.OrderID = OII.OrderID And IM.Roll = OII.Roll And IM.Frame = OII.Frame
+	And OII.ItemOrderID = '<OrderID>' And OII.ItemID = '<ItemID>'
+EndBUFFER();
+
+	if ( !database( Cmd,~<UpdateCmd>~ ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( ~Unable to set images to adjust for image in Order <OrderID>: <theErr>  <Cmd>~ ) );
+	}
+
+	return TRUE;
+}
+
+// finds the order items matching 'query' and creates a book out of them
+// can take optional args in pairs : books table field name, books table field value
+// Make sure the Where clause for the Query contains the OrderID
+NUMERIC CreateBookFromItems(Query,OrderID)
+{
+
+	// get a unique group id
+	GroupID = UniqueGroupID(database,~<OrderID>~);
+
+	num = 4;
+	CallingString = ~~;
+	while ( DefinedAndNotNull( p<++num> ) )
+	{
+		field = ~<p<num>>~;
+		value = ~<p<++num>>~;
+		if (SimilarStr(~<field>~,~Quantity~))
+		{
+			Quantity = Numeric(~<value>~);
+		}
+		else if (SimilarStr(~<field>~,~TemplateName~))
+		{
+			TemplateName = ~<value>~;
+		}
+		else
+		{
+			CallingString = ~`<CallingString>`,`<field>`,`<value>`~;
+		}
+	}
+
+	// Add a record to the books table
+	if ( !AddBook(~<OrderID>~,<GroupID>,<Quantity>,~<TemplateName>~,~<CallingString>~))
+		{ return FALSE; }
+
+	// get the order items matching the query
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	// insert the groupID into each order item record
+	mySequenceCount = 0;
+	if ( List( GetNext,Record ) )
+	{
+		Record( Get,Sequence,FirstSequence);
+		FirstSequence = Numeric(~<FirstSequence>~);
+	}
+
+	if ( database( CMD,~Select MAX(Subsequence) From OrderItems Where OrderID = '<OrderID>' AND Sequence = <FirstSequence>~,MaxSubSequence ) )
+	{ 
+		NextSubSequence = ~<$rs.MaxSubSequence[#0]>~ == ~~ ? ~0~ : ~<$rs.MaxSubSequence[#0]>~; 
+	}
+	else
+	{
+		database( GetErrorDescription,theErr );
+		return 0;
+	}
+	more = List( GetFirst,Record ) ;
+	while ( <more> )
+	{
+		Record( Set,GroupID,<GroupID> );
+		Record( Set,Sequence,<FirstSequence> );
+		Record( Set,Subsequence,<++NextSubSequence> );
+		more = List( GetNext,Record ) ;
+	}
+
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+	return TRUE;
+}
+
+// finds the order items matching 'query' and creates a book out of them
+// can take optional args in pairs : book attributes table field name, book attributes table field value
+// Make sure the Where clause for the Query contains the OrderID
+NUMERIC CreateBookFromExistingItems(Query,OrderID,Quantity,TemplateName)
+{
+	Quantity = Numeric(~<Quantity>~);
+
+	// get a unique group id
+	GroupID = UniqueGroupID(database,~<OrderID>~);
+
+	// Update the books table
+	if ( !AddBook(~<OrderID>~,<GroupID>,<Quantity>,~<TemplateName>~))
+		{ return FALSE; }
+
+	// get the order items matching the query
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	mySequenceCount = 0;
+	if ( List( GetNext,Record ) )
+	{
+		Record( Get,Sequence,FirstSequence);
+		FirstSequence = Numeric(~<FirstSequence>~);
+	}
+
+	if ( database( CMD,~Select MAX(Subsequence) From OrderItems Where OrderID = '<OrderID>' AND Sequence = <FirstSequence>~,MaxSubSequence ) )
+	{ 
+		NextSubSequence = ~<$rs.MaxSubSequence[#0]>~ == ~~ ? ~0~ : ~<$rs.MaxSubSequence[#0]>~; 
+	}
+	else
+	{
+		database( GetErrorDescription,theErr );
+		return 0;
+	}
+	// insert the groupID,Sequence and Subsequence into each order item record
+	more = List( GetFirst,Record ) ;
+	while ( <more> )
+	{
+		Record( Set,GroupID,<GroupID> );
+		Record( Set,Sequence,<FirstSequence> );
+		Record( Set,Subsequence,<++NextSubSequence> );
+		more = List( GetNext,Record ) ;
+	}
+
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	//  update the books attributes table
+	num = 4;	// Arg 5 is the first optional arg
+	Sequence = CalcNextForBookAttributes(database,~<OrderID>~,<GroupID>,Sequence);
+
+	while ( DefinedAndNotNull( p<++num> ) )		// ANOTHER OPTIONAL ARG?
+	{
+		Attribute = ~<P<num>>~;
+		Value = ~<P<++num>>~;
+		Fields = STR ( OrderID,GroupID,Sequence,Attribute,[Value] );
+		Values = STR ( '<OrderID>',<GroupID>,<Sequence>,'<Attribute>','<Value>' );
+
+		Cmd = STR ( Insert Into BookAttributes(<Fields>) Values(<Values>) );
+		if ( !database( CMD,~<Cmd>~ ) )
+		{
+			database( GetErrorDescription,theErr );
+			return Failure( Translate( ~Inserting Book Attributes for Order <OrderID> and Group ID <GroupID>: <theErr>  <Cmd>~ ) );
+		}
+
+		Sequence = <Sequence> + 10;
+
+	}
+	return TRUE;
+}
+
+
+// create or update the books table, takes optional args Field,Value,Field,Value,.....
+NUMERIC UpdateBook(OrderID,GroupID)
+{
+	num = 2;	// Arg 3 is the first optional arg
+	count = 0;	
+	while ( DefinedAndNotNull( p<++num> ) )		// ANOTHER OPTIONAL ARG?
+	{
+		Attribute<count> = ~<P<num>>~;
+		Value<count> = ~<P<++num>>~;
+		++count;
+	}
+
+	if (Numeric(~<GroupID>~) == 0)
+	{
+		GroupID = UniqueGroupID(database,~<OrderID>~);
+	}
+	numFields = <count>;
+	Query = ~Select * From Books Where OrderID = '<OrderID>' And GroupID = <GroupID>~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		List( AddNew,Record );
+		Record( Set,OrderID,~<OrderID>~ );
+		Record( Set,GroupID, <GroupID> );
+	}
+
+	count = -1;
+	while (<++count> < <numFields>)
+	{
+		Record( Set,~<Attribute<count>>~,~<Value<count>>~ );
+	}
+	
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+	return <GroupID>;
+}
+
+NUMERIC AddBookAttribute(OrderID,GroupID,Attribute,Value)
+{
+	BookSequence = CalcNextForBookAttributes(database,~<OrderID>~,<GroupID>,Sequence);
+	
+	Fields = STR ( OrderID,GroupID,Sequence,Attribute,[Value] );
+	Values = STR ( '<OrderID>',<GroupID>,<BookSequence>,'<Attribute>','<Value>' );
+
+	Cmd = STR ( Insert Into BookAttributes(<Fields>) Values(<Values>) );
+	if ( !database( CMD,~<Cmd>~ ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( ~Inserting Book Attributes for Order <OrderID> and Group ID <GroupID>: <theErr>  <Cmd>~ ) );
+	}
+	return TRUE;
+}
+
+NUMERIC CreateBook(OrderID,Quantity,TemplateName)
+{
+	// get a unique group id
+	GroupID = UniqueGroupID(database,~<OrderID>~);
+	Quantity = Numeric(~<Quantity>~);
+
+	// update the books table
+	if (!AddBook( ~<OrderID>~,<GroupID>,<Quantity>,~<TemplateName>~))
+		{ return FALSE; }
+
+	// update the books attribute table
+	num = 3;	// Arg 4 is the first optional arg
+	BookSequence = CalcNextForBookAttributes(database,~<OrderID>~,<GroupID>,Sequence);
+	while ( DefinedAndNotNull( p<++num> ) )		// ANOTHER OPTIONAL ARG?
+	{
+		Attribute = ~<P<num>>~;
+		Value = ~<P<++num>>~;
+		Fields = STR ( OrderID,GroupID,Sequence,Attribute,[Value] );
+		Values = STR ( '<OrderID>',<GroupID>,<BookSequence>,'<Attribute>','<Value>' );
+
+		Cmd = STR ( Insert Into BookAttributes(<Fields>) Values(<Values>) );
+		if ( !database( CMD,~<Cmd>~ ) )
+		{
+			database( GetErrorDescription,theErr );
+			return Failure( Translate( ~Inserting Book Attributes for Order <OrderID> and Group ID <GroupID>: <theErr>  <Cmd>~ ) );
+		}
+
+		BookSequence = <BookSequence> + 10;
+
+	}
+	return <GroupID>;
+}
+
+
+
+NUMERIC AddBook(OrderID,GroupID,Quantity,TemplateName)
+{
+	if ( !AddOrder( ~<OrderID>~ ) )
+	{
+		return FALSE;
+	}
+
+	Quantity = Numeric(~<Quantity>~);
+	if (<Quantity> < 1)
+		{	Quantity = 1;	}
+	GroupID = Numeric(~<GroupID>~);
+	Query = ~Select * From Books Where OrderID = '<OrderID>' And GroupID = <GroupID>~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		List( AddNew,Record );
+		Record( Set,OrderID,~<OrderID>~ );
+		Record( Set,GroupID, <GroupID> );
+	}
+
+	Record( Set,TemplateName,~<TemplateName>~ );
+	Record( Set,Quantity, <Quantity> );
+	
+	num = 4;
+	while ( DefinedAndNotNull( p<++num> ) )
+	{
+		field = ~<p<num>>~;
+		value = ~<p<++num>>~;
+		Record( Set,~<field>~,~<value>~ );
+	}
+
+	
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	return TRUE;
+}
+
+NUMERIC AddOrderItem( OrderID,Item,Sequence,Quantity,JobPath,ProductID,Status,WantMaintainOrderItem,GroupID,Subsequence,PackageID,PackageGroup,ProductType,ImagesOrderID,ImagesSubjectID,Workflow )
+{
+	if ( !AddOrder( ~<OrderID>~ ) )
+	{
+		return FALSE;
+	}
+	
+	Item = IsNullOrWhite(~<Item>~) ? -1 : Numeric(~<Item>~);
+	
+	Sequence = IsNullOrWhite(~<Sequence>~) ? -1 : Numeric(~<Sequence>~);
+
+	Query = ~Select * From OrderItems Where OrderID = '<OrderID>' AND ID = <Item>~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+	
+	IsNewOrderItem = FALSE;
+
+	if ( !List( GetFirst,Record ) )
+	{
+		List( AddNew,Record );
+		
+		if ( <Item> <= 0 )
+		{
+			Item = CalcNextForOrderItem( database,~<OrderID>~,ID );
+		}
+		
+		if ( <Sequence> <= 0 )
+		{
+			Sequence = CalcNextForOrderItem( database,~<OrderID>~,Sequence );
+		}
+
+		Record( Set,ID,~<Item>~ );
+		Record( Set,OrderID,~<OrderID>~ );
+		IsNewOrderItem = TRUE;
+	}
+
+	Group = ~<$Str.$GroupID.numeric>~;
+	Record( Set,GroupID,~<Group>~ );
+	Subs = ~<$Str.$Subsequence.numeric>~;
+	Record( Set,Subsequence,~<Subs>~ );
+	Record( Set,Sequence,Numeric(~<Sequence>~));
+	Record( Set,Quantity,Numeric(~<Quantity>~));
+
+	if ( ~<ProductID>~ != ~~ )		{ Record( Set,ProductID,~<ProductID>~ ); }
+	if ( ~<Status>~ != ~~ )			{ Record( Set,Status,~<Status>~ ); }
+	if ( ~<JobPath>~ != ~~ )		{ Record( Set,JobPath,~<JobPath>~ ); }
+	if ( ~<PackageID>~ != ~~ )		{ Record( Set,PackageID,~<PackageID>~ ); }
+	if ( ~<ProductType>~ != ~~ )	{ Record( Set,ProdType,~<ProductType>~ ); }
+	
+	Record( Set,PackageGroup,~<$Str.$PackageGroup.numeric>~ );
+
+	Record( Set,Printable,TRUE );
+	
+	if ( IsNullOrWhite(~<Workflow>~) )	
+	{ 
+		if ( !IsNullOrWhite(~<ProductID>~) && <IsNewOrderItem> )
+		{
+			if ( database( GetValuesFor,~Select Workflow From Products Where ID = '<ProductID>'~,theWorkflow ) )
+			{	
+				Record( Set,Workflow,~<theWorkflow>~ );
+			}
+		}
+	}
+	else
+	{
+		Record( Set,Workflow,~<Workflow>~ );
+	}
+
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !IsNullOrWhite(~<Workflow>~) )	
+	{
+		if ( FunctionDefined(AddWorkFlow) )
+		{
+			AddWorkflow(~<Workflow>~);
+		}
+		else
+		{
+			Info( ~Unable to add workflow. Upgrade the DP2 version on this workstation.~ );
+		}
+	}
+
+	WantToMaintain = TRUE;
+	
+	if ( Defined(WantMaintainOrderItem) )
+	{
+		WantToMaintain = Numeric(~<WantMaintainOrderItem>~);
+	}
+
+	if ( <WantToMaintain> )
+	{	 
+		if ( IsNull( ~<JobPath>~ ) )
+		{
+			database( Cmd,~Delete From OrderItemImages Where ItemOrderID = '<OrderID>' AND ItemID = <Item>~ );	
+		}
+		else
+		{
+			MaintainOrderItem( ~<OrderID>~,~<Item>~,~<JobPath>~,TRUE );
+		}
+	}
+
+	return Success( Translate( ~Added OrderItem <OrderID>,<Item>.  Job <JobPath>~ ) );
+}
+
+
+
+
+
+NUMERIC WaitForDocToClose( Path )
+{
+	while ( TRUE )
+	{
+		if ( !Document( doc,FindByPath,~<Path>~ ) )
+		{
+			return TRUE;
+		}
+
+		ForgetLocal( doc );
+
+		Sleep( 60 );
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC WaitForDocToOpen( Path )
+{
+	while ( TRUE )
+	{
+		if ( Document( doc,FindByPath,~<Path>~ ) )
+		{
+			return TRUE;
+		}
+
+		ForgetLocal( doc );
+
+		Sleep( 60 );
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC CloseAllOpenWindows()
+{
+	if ( Numeric(~<$[Symbols].RunVersion[Value]>~) >= 2.0 )
+	{
+		Action = ~CloseAllWindows~;
+		return PerformActions( Action );
+	}
+
+	return FALSE;
+}
+
+NUMERIC Explore( Path )
+{
+	if ( Numeric(~<$[Symbols].RunVersion[Value]>~) >= 2.0 )
+	{
+		Action = STR ( Explorer Open ExplorerDoc "Init(~Explore~,~<Path>~);" );
+		return PerformDocActions( Action );
+	}
+
+	return FALSE;
+}
+
+
+NUMERIC OpenAFile( Path )
+{
+	if ( FunctionDefined(PostDocMessage) )
+	{
+		PostDocMessage( ~~,~<Path>~ ) ;
+	}
+	else
+	{
+		Open( Any,~<Path>~ ) ;
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC EditOrderItem( OrderID,Item,Msg )
+{
+	Query = ~Select JobPath From OrderItems Where OrderID = '<OrderID>' and ID = <Item>~;
+
+	if ( !database( GetValuesFor,~<Query>~,JobPath ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	OpenAFile( ~<JobPath>~ );
+
+	WaitForDocToOpen( ~<JobPath>~ );
+
+	FileName = ~<$str.$JobPath.FileName>~;
+
+	if ( ~<Msg>~ == ~~ )
+	{
+		Info( Translate( ~Please edit Job <FileName> and save~ ) );
+	}
+	else
+	{
+		Info( Translate( ~<FileName>:  <Msg>~ ) );
+	}
+
+	WaitForDocToClose( ~<JobPath>~ );
+
+	return FALSE;
+}
+
+NUMERIC OpenAdjustImages()
+{
+	Actions = ~EditImagesDoc OpenOnce EditImagesDoc~;
+	return PerformDocActions( Actions );
+}
+
+
+NUMERIC EditImage( OrderID,Roll,Frame,Msg )
+{
+	Query = ~Select Path From Images Where OrderID = '<OrderID>' and Roll = '<Roll>' AND Frame = '<Frame>'~;
+
+	if ( !database( GetValuesFor,~<Query>~,Path ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	OpenAFile( ~<Path>~ );
+
+	WaitForDocToOpen( ~<Path>~ );
+
+	FileName = ~<$str.$JobPath.FileName>~;
+
+	if ( ~<Msg>~ == ~~ )
+	{
+		Info( Translate( ~Please edit Image <OrderID>,<Roll>,<Frame> and save~ ) );
+	}
+	else
+	{
+		Info( Translate( ~<FileName>:  <Msg>~ ) );
+	}
+
+	WaitForDocToClose( ~<Path>~ );
+
+	return FALSE;
+}
+
+
+NUMERIC OpenAJob( JobPath,OrderID,OrderItem )
+{
+	if ( ~<JobPath>~ == ~~ )
+		{ return FALSE; }
+
+	if ( Document( doc,FindByPath,~<JobPath>~ ) )
+	{
+		return TRUE;
+	}
+
+	if ( !IsMainThread() )
+	{
+		return Failure(~You must be on the main thread to open <JobPath>~ );
+	}
+
+	if (!GenCon( Info,New,DDDocumentInfo ) )
+	{ 
+		Failure( Translate( ~Could not create document info for <JobPath>~ ) );
+	}
+
+	Info( SetValues,OrderID,~<OrderID>~,OrderItemID,~<OrderItem>~ );
+
+	if ( !Document( aJob,Open,~<JobPath>~,Job,~~,Info ) )
+	{ 
+		return Failure( Translate( ~Could not open <JobPath>~ ) );
+	}
+
+	return Success( Translate( ~Opened <JobPath> For <OrderID>,<OrderItem>~ ) );
+}
+
+PrintBatchID = ~~;
+PrintBatchSeq = ~0~;
+
+
+NUMERIC BeginPrintBatch()
+{
+	PrintBatchID = UniquePrintBatchID();
+	PrintBatchSeq = ~0~;
+
+	ForgetLocal( dbLocal );
+	ForgetGlobal( dbLocal );	// IN CASE SOMEONE LEFT A HANGING TRANSACTION
+
+	if ( !Ado( dbLocal,ConnectLocal ) )
+	{
+		dbLocal( GetErrorDescription,theErr );
+		return Failure( ~Error connecting to the workstation database: <theErr>~ );
+	}
+
+	Global( dbLocal );	// MAKE IT GLOBAL SO WE CAN DO MULTIPLE ITEMS ON AN ORDER IN A TRANSACTION
+	
+	if ( !dbLocal( BeginTransaction ) )
+	{
+		dbLocal( GetErrorDescription,theErr );
+		return Failure( ~Error starting a transaction for the workstation database: <theErr>~ );
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC CommitPrintBatch()
+{
+	PrintBatchID = ~~;
+	PrintBatchSeq = ~0~;
+
+	if ( !Defined( dbLocal ) )
+	{
+		return Failure( ~CommitPrintBatch was called with no open PrintBatch~ );
+	}
+
+	if ( !dbLocal( CommitTransaction ) )
+	{
+		dbLocal( GetErrorDescription,theErr );
+		return Failure( ~Error commiting a transaction for the workstation database: <theErr>~ );
+	}
+
+	ForgetGlobal( dbLocal );
+
+	if ( Defined( BackgroundOrderProcessor ) )
+	{
+		RemoteJobServer( BackgroundOrderProcessor,ProcessOrders,TRUE );
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC RollBackPrintBatch()
+{
+	PrintBatchID = ~~;
+	PrintBatchSeq = ~0~;
+
+	if ( !Defined( dbLocal ) )
+	{
+		return TRUE;
+	}
+
+	if ( !dbLocal( RollBackTransaction ) )
+	{
+		dbLocal( GetErrorDescription,theErr );
+		return Failure( ~Error rolling back a transaction for the workstation database: <theErr>~ );
+	}
+
+	ForgetGlobal( dbLocal );
+
+	return TRUE;
+}
+
+
+NUMERIC SetPrintBatchReady()
+{
+	Cmd = STR ( Update JobQueue Set PrintStatus = 1 Where BatchID = '<PrintBatchID>' AND PrintStatus = 8);
+
+	if ( !database( CMD,~<Cmd>~ ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( ~Error setting Batch <PrintBatchID> to Ready: <theErr>  <Cmd>~ ) );
+	}
+	return Success(~Batch <PrintBatchID> Set to ready~);
+}
+
+NUMERIC RunJob( JobPath,Quantity,OrderID,Item,PreviewPath,Priority,Owner,PrintStatus )
+{
+	// DEFAULT SOME OF THE FIELDS IN CASE THEY WEREN'T PASSED IN
+	// ONLY JOB PATH IS REQUIRED
+
+	if ( IsNull( ~<OrderID>~ ) )
+	{
+		OrderID = UniqueOrderID();
+	}
+
+	OrderSequence	=	(~<OrderSequence>~ == ~~) ? ~1~ : ~<OrderSequence>~;
+	Item			=	(~<Item>~ == ~~) ? ~1~ : ~<Item>~;
+	Quantity		=	(~<Quantity>~ == ~~) ? ~1~ : ~<Quantity>~;
+	Priority		=	(~<Priority>~ == ~~) ? ~50~ : ~<Priority>~;
+	Owner			=	(~<Owner>~ == ~~) ? ~<$App.UserName>~ : ~<Owner>~;
+	PrintStatus		=	(~<PrintStatus>~ != ~~) ? ~<PrintStatus>~ : ~1~;
+
+	BatchInProgress = ~<PrintBatchID>~ != ~~;
+
+	if ( !<BatchInProgress> )
+	{
+		if ( !BeginPrintBatch() )
+		{
+			return FALSE;
+		}
+	}
+
+	Fields = STR ( BatchID,OrderID,OrderItemID,Sequence,Priority,Owner,Printable,Status,Quantity,JobPath,PreviewPath,PrintStatus );
+	Values = STR ( '<PrintBatchID>','<OrderID>',<Item>,<++PrintBatchSeq>,<Priority>,'<Owner>',1,'Ready',<Quantity>,'<JobPath>','<PreviewPath>',<PrintStatus> );
+
+	Cmd = STR ( Insert Into OrderItemsToQueue(<Fields>) Values(<Values>) );
+
+	if ( !dbLocal( CMD,~<Cmd>~ ) )
+	{
+		dbLocal( GetErrorDescription,theErr );
+		RollBackPrintBatch();
+		return Failure( Translate( ~Running Job <JobPath>: <theErr>  <Cmd>~ ) );
+	}
+	
+	if ( !<BatchInProgress> )		// IS THIS A ONE ITEM PRINT REQUEST?
+	{
+		if ( !CommitPrintBatch() )
+		{
+			return FALSE;
+		}
+	}
+
+	return Success( Translate( ~Ran Job <JobPath>~ ) );
+}
+
+
+NUMERIC RunOrderItem( OrderID,Item,Quantity,PrintStatus,QueueName )
+{
+	Query = ~Select Priority,Owner From Orders Where ID = '<OrderID>'~;
+
+	if ( !database( GetValuesFor,~<Query>~,Priority,Owner ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	Query = ~Select JobPath,Quantity From OrderItems Where OrderID = '<OrderID>' AND ID = <Item>~;
+
+	if ( !database( GetValuesFor,~<Query>~,JobPath,OrderItemQuantity ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( ~<Quantity>~ == ~~ )	// IF NO QUANTITY, USE THE QUANTITY FROM THE ORDERITEM
+	{
+		Quantity = ~<OrderItemQuantity>~;
+	}
+
+	Priority =	~<Priority>~ == ~~ ? ~50~ : ~<Priority>~;
+	Owner =		~<Owner>~ == ~~ ? ~<$App.UserName>~ : ~<Owner>~;
+	PrintStatus	=	(~<PrintStatus>~ != ~~) ? ~<PrintStatus>~ : ~1~;
+	QueueName	=	(~<QueueName>~ != ~~) ? ~<QueueName>~ : ~~;
+
+
+	BatchInProgress = ~<PrintBatchID>~ != ~~;
+
+	if ( !<BatchInProgress> )
+	{
+		if ( !BeginPrintBatch() )
+		{
+			return FALSE;
+		}
+	}
+
+	Fields = STR ( BatchID,OrderID,OrderItemID,Sequence,Priority,Owner,Printable,Status,Quantity,JobPath,PrintStatus,QueueName );
+	Values = STR ( '<PrintBatchID>','<OrderID>',<Item>,<++PrintBatchSeq>,<Priority>,'<Owner>',1,'Ready',<Quantity>,'<JobPath>',<PrintStatus>,'<QueueName>' );
+
+	Cmd = STR ( Insert Into OrderItemsToQueue(<Fields>) Values(<Values>) );
+
+	if ( !dbLocal( CMD,~<Cmd>~ ) )
+	{
+		dbLocal( GetErrorDescription,theErr );
+		RollBackPrintBatch();
+		return Failure( Translate( ~Running Order <OrderID>: <theErr>  <Cmd>~ ) );
+	}
+	
+	if ( !<BatchInProgress> )		// IS THIS A ONE ITEM PRINT REQUEST?
+	{
+		if ( !CommitPrintBatch() )
+		{
+			return FALSE;
+		}
+	}
+
+	return Success( Translate( ~Ran Order <OrderID>, Item <Item>~ ) );
+}
+
+
+NUMERIC RunJobsForOrder( OrderID,PrintStatus )
+{
+	Query = ~Select Priority,Owner From Orders Where ID = '<OrderID>'~;
+
+	if ( !database( GetValuesFor,~<Query>~,Priority,Owner ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	Priority =	~<Priority>~ == ~~ ? ~50~ : ~<Priority>~;
+	Owner =		~<Owner>~ == ~~ ? ~<$App.UserName>~ : ~<Owner>~;
+	PrintStatus	=	(~<PrintStatus>~ == ~~) ? ~1~ : ~<PrintStatus>~ ;
+
+	BatchInProgress = ~<PrintBatchID>~ != ~~;
+
+	if ( !<BatchInProgress> )
+	{
+		if ( !BeginPrintBatch() )
+		{
+			return FALSE;
+		}
+	}
+
+	Fields = STR ( BatchID,OrderID,OrderItemID,Sequence,Priority,Owner,Printable,Status,PrintStatus );
+	Values = STR ( '<PrintBatchID>','<OrderID>',0,<++PrintBatchSeq>,<Priority>,'<Owner>',1,'Ready',<PrintStatus> );
+
+	Cmd = STR ( Insert Into OrderItemsToQueue(<Fields>) Values(<Values>) );
+
+	if ( !dbLocal( CMD,~<Cmd>~ ) )
+	{
+		dbLocal( GetErrorDescription,theErr );
+		RollBackPrintBatch();
+		return Failure( Translate( ~Running Order <OrderID>: <theErr>  <Cmd>~ ) );
+	}
+	
+	if ( !<BatchInProgress> )		// IS THIS A ONE ORDER PRINT REQUEST?
+	{
+		if ( !CommitPrintBatch() )
+		{
+			return FALSE;
+		}
+	}
+
+	return Success( Translate( ~Ran Order <OrderID>~ ) );
+}
+
+
+
+NUMERIC RunOrderItemsForProducts( theOrderID,PrintStatus,QueueName )		// A series of product ids' are the variable parameters
+{
+	if ( <NumVariableParameters> < 1 )
+	{
+		return Failure( ~You must pass at least one ProductID~ );
+	}
+
+	theProducts = ~<$str.$VariableParameters.ReplaceCharWithChar<$chr.Tilde>'>~;
+
+	OrderItemsQuery = ~Select * From OrderItems Where OrderID = '<theOrderID>' AND ProductID IN (<theProducts>) Order By Sequence,SubSequence~;
+
+	return RunJobsForOrderItemsQuery( ~<theOrderID>~,~<PrintStatus>~,~<QueueName>~,~<OrderItemsQuery>~ );
+}
+
+
+NUMERIC RunJobsForOrderItemsQuery( OrderID,PrintStatus,QueueName,OrderItemsQuery )
+{
+	Query = ~Select Priority,Owner From Orders Where ID = '<OrderID>'~;
+
+	if ( !database( GetValuesFor,~<Query>~,Priority,Owner ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	Priority =	~<Priority>~ == ~~ ? ~50~ : ~<Priority>~;
+	Owner =		~<Owner>~ == ~~ ? ~<$App.UserName>~ : ~<Owner>~;
+	PrintStatus	=	(~<PrintStatus>~ == ~~) ? ~1~ : ~<PrintStatus>~ ;
+	QueueName	=	(~<QueueName>~ != ~~) ? ~<QueueName>~ : ~~;
+
+	BatchInProgress = ~<PrintBatchID>~ != ~~;
+
+	if ( !<BatchInProgress> )
+	{
+		if ( !BeginPrintBatch() )
+		{
+			return FALSE;
+		}
+	}
+
+	if ( !PGenconList( List,Connection,database,Query,~<OrderItemsQuery>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( ~Failed to find items for <OrderItemsQuery>. <theErr>~ );
+	}
+	
+	while ( List( GetNext,OrderItem ) )
+	{
+		Fields = STR ( BatchID,OrderID,OrderItemID,Sequence,Priority,Owner,Printable,Status,Quantity,JobPath,PrintStatus,QueueName );
+		Values = STR ( '<PrintBatchID>','<OrderID>',<$pcon.OrderItem[ID]>,<++PrintBatchSeq>,<Priority>,'<Owner>',1,'Ready',<$pcon.OrderItem[Quantity]>,'<$pcon.OrderItem[JobPath]>',<PrintStatus>,'<QueueName>' );
+
+		Cmd = STR ( Insert Into OrderItemsToQueue(<Fields>) Values(<Values>) );
+
+		if ( !dbLocal( CMD,~<Cmd>~ ) )
+		{
+			dbLocal( GetErrorDescription,theErr );
+			RollBackPrintBatch();
+			return Failure( Translate( ~Running Order <OrderID>: <theErr>  <Cmd>~ ) );
+		}
+	}
+	
+	if ( !<BatchInProgress> )		// IS THIS A ONE ORDER PRINT REQUEST?
+	{
+		ReturnOnFailure( CommitPrintBatch() );
+	}
+
+	return Success( Translate( ~Ran Selected OrderItems for Query on Order <OrderID>~ ) );
+}
+
+
+NUMERIC SetProfileForOrder( OrderID,ProfileName )
+{
+	Cmd = ~Update Images Set ICCProfile = '<ProfileName>' where OrderID = '<OrderID>'~;
+
+	if ( !database( Cmd,~<Cmd>~ ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Cmd>~,~<theErr>~ ) );
+	}
+
+	return Success( Translate( ~Set Profile for <OrderID>.  <Cmd>~ ) );
+}
+
+
+NUMERIC SearchTable( Table )
+{
+	if ( Numeric(~<$[Symbols].RunVersion[Value]>~) < 2.0 )
+	{
+		return FALSE;
+	}
+
+	action = ACTION DOC ( SearchDoc Open SearchDoc "Search(<Table>);" );
+	return PerformActions( action );
+}
+
+
+NUMERIC StartRoesServer()
+{
+      Actions = ACTION DOC ( ROESServer OpenOnce ROESServer );
+      return PerformActions( Actions );
+}
+
+
+NUMERIC OpenOrders( Title,Query )
+{
+	if ( Numeric(~<$[Symbols].RunVersion[Value]>~) < 2.0 )
+	{
+		return FALSE;
+	}
+
+	Actions = ACTION DOC ( OrdersDoc OpenOnce OrdersDoc "Init(~<Title>~,~<Query>~ );");
+	return PerformActions( Actions );
+}
+
+
+NUMERIC OpenOrderItemThumbnails( OrderID )
+{
+	if ( Numeric(~<$[Symbols].RunVersion[Value]>~) < 2.0 )
+	{
+		return FALSE;
+	}
+
+	Query = ~Select OrderItems.*, Products.LayoutName From OrderItems,Products  Where OrderID In ('<OrderID>') And OrderItems.ProductID = Products.ID ORDER BY OrderID,OrderItems.Sequence,OrderItems.Subsequence~;
+
+	Actions = STR ( ~OrderItems~ OpenOnce OrderItemsDoc "Init( ~<OrderID>~,~<Query>~,TRUE,TRUE,TRUE );" );
+
+	return PerformDocActions( Actions );
+}
+
+
+
+NUMERIC UpdateJobQueueJob( JobID,<OptionalFieldValueArgs> )
+{
+	Query = ~Select * From JobQueue Where JobID = '<JobID>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		List( AddNew,Record );
+
+		Record( Set,JobID,~<JobID>~ );
+	}
+
+	num = 0;
+
+	while ( DefinedAndNotNull( p<++num> ) )
+	{
+		Record( Set,~<p<num>>~,~<v<num>>~ );
+	}
+
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC UpdateCustomer( ID,<OptionalFieldValueArgs> )
+{
+	Query = ~Select * From Customers Where ID = '<ID>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		List( AddNew,Record );
+
+		Record( Set,ID,~<ID>~ );
+	}
+
+	num = 0;
+
+	while ( DefinedAndNotNull( p<++num> ) )
+	{
+		Record( Set,~<p<num>>~,~<v<num>>~ );
+	}
+
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC UpdateSubjectInfo( SubjectInfoOrderID,SubjectID,InfoType )	// Optional pairs for field/value go after InfoType
+{
+	if ( ~<InfoType>~ == ~*~ )	// LOOKUP THE INFOTYPE FROM THE ORDER?
+	{
+		InfoType = GetSubjectInfoType( ~<SubjectInfoOrderID>~ );
+	}
+
+	Query = ~Select * From SubjectInfo<InfoType> Where OrderID = '<SubjectInfoOrderID>' And SubjectID = '<SubjectID>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		List( AddNew,Record );
+
+		Record( Set,OrderID,~<SubjectInfoOrderID>~ );
+		Record( Set,SubjectID,~<SubjectID>~ );
+	}
+
+	num = 3;
+
+	while ( DefinedAndNotNull( p<++num> ) )
+	{
+		field = ~<p<num>>~;
+		value = ~<p<++num>>~;
+		Record( Set,~<field>~,~<value>~ );
+	}
+
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	Info( ~UpdateSubjectInfo( '<SubjectInfoOrderID>','<SubjectID>,'<InfoType>',... )~ );
+
+	return TRUE;
+}
+
+
+NUMERIC DeleteSubjectInfo( SubjectInfoOrderID,SubjectID,InfoType )
+{
+	if ( ~<InfoType>~ == ~*~ )	// LOOKUP THE INFOTYPE FROM THE ORDER?
+	{
+		InfoType = GetSubjectInfoType( ~<SubjectInfoOrderID>~ );
+	}
+
+	Cmd = ~Delete From SubjectInfo<InfoType> Where OrderID = '<SubjectInfoOrderID>' And SubjectID = '<SubjectID>'~;
+
+	if ( !database( Cmd,~<Cmd>~ ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Cmd>~,~<theErr>~ ) );
+	}
+
+	Info( ~DeleteSubjectInfo( '<SubjectInfoOrderID>','<SubjectID>','<InfoType>' )~ );
+
+	return TRUE;
+}
+
+
+NUMERIC DeleteSubjectInfoForOrder( OrderID,InfoType )
+{
+	GetSubjectOrderIDInfoType( ~<OrderID>~,theInfoType,SubjectInfoOrderID );
+
+	if ( ~<InfoType>~ == ~*~ )	// LOOKUP THE INFOTYPE FROM THE ORDER?
+	{
+		InfoType = ~<theInfoType>~;
+	}
+
+	Cmd = ~Delete From SubjectInfo<InfoType> Where OrderID = '<SubjectInfoOrderID>'~;
+
+	if ( !database( Cmd,~<Cmd>~ ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Cmd>~,~<theErr>~ ) );
+	}
+
+	Info( ~DeleteSubjectInfoForOrder( '<OrderID>','<InfoType>' )~ );
+
+	return TRUE;
+}
+
+// OrderID is the Order to create the OrderItems on
+// OrderIDForSubjectInfo is the OrderID or ShootID of the SubjectInfo
+// WhichImage is  0 - Use All Images,  1 - Use First Image,  2 - Use Last Image		(NULL looks it up in system settings)
+// SubjectInfoQuery is an optional alternate query to select the subjectinfo records to operate on
+// JobPopulationScript should be NULL unless you have written a custom script and put it into \Scripts\JobPopulationScripts on your server
+NUMERIC CreateOrderItemsFromSubjectInfo(OrderID,OrderIDForSubjectInfo,WhichImage,SubjectInfoQuery,JobPopulationScript, OrderBy, OrderIDSQLList)
+{
+	InfoType = ~~;
+	
+	if ( IsNull(~<OrderBy>~))
+	{
+		OrderBy = ~SubjectID~;
+	}	
+
+	database( GetValuesFor,~Select InfoType From Orders Where ID = '<OrderIDForSubjectInfo>'~,InfoType );
+
+	Query = ~Select * From SubjectInfo<InfoType> Where OrderID = '<OrderIDForSubjectInfo>' Order By <OrderBy>~;
+
+	if ( DefinedAndNotNull(SubjectInfoQuery) )	// OPTIONAL QUERY TO CHOOSE OTHER THAN ALL SUBJECTS OF THE ORDER
+	{
+		Query = ~<SubjectInfoQuery>~;
+	}
+
+	if ( !PGenConList( SubjectList,Connection,database,Cursor,Static,Query,~<Query>~ ) )
+	{
+		SubjectList( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	Stop = RecordCount = 0;
+		
+	if ( !CreateItemsForSubjectList(database,~<OrderID>~,SubjectList,~SubjectInfo<InfoType>~,RecordCount,Stop,~<WhichImage>~,~<OrderIDSQLList>~,~<JobPopulationScript>~) )
+	{
+		return Failure( Translate( ~Failed to create OrderItems from <fTableName> for Order <OrderID>~ ) );
+	}
+	
+	ForgetGlobal(mySiGlobals);  // Used for job population scripts only. Allows you to set global variables for each run. Gets rid of global variables for the next run
+
+	return TRUE;
+}
+
+
+NUMERIC DeleteAllFromSubjectInfo( SubjectInfoOrderID,InfoType )
+{
+	if ( ~<InfoType>~ == ~*~ )	// LOOKUP THE INFOTYPE FROM THE ORDER?
+	{
+		InfoType = GetSubjectInfoType( ~<SubjectInfoOrderID>~ );
+	}
+
+	Cmd = ~Delete From SubjectInfo<InfoType> Where OrderID = '<SubjectInfoOrderID>'~;
+
+	if ( !database( Cmd,~<Cmd>~ ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Cmd>~,~<theErr>~ ) );
+	}
+
+	Info( ~DeleteAllFromSubjectInfo( '<SubjectInfoOrderID>','<InfoType>' )~ );
+
+	return TRUE;
+}
+
+
+
+STR GetSubjectInfoType( SubjectOrderID )
+{
+	InfoType = ~~;
+
+	Cmd = ~Select Distinct InfoType From Orders Where ((ID = '<SubjectOrderID>' And ShootDescID Is Null) Or (ShootDescID = '<SubjectOrderID>')) And ImagesOrderID Is Null Order by InfoType~;
+
+	database( GetValuesFor,~<Cmd>~,InfoType );
+
+	return ~<InfoType>~;
+}
+
+
+STR		ProductLayoutPath( ProductID )
+{
+	if (  database( GetValuesFor,~Select ProductLayoutPath From Products Where ID = '<ProductID>'~,ProductLayoutPath ) )
+	{
+		return ~<ProductLayoutPath>~;
+	}
+
+	return ~~;
+}
+
+
+NUMERIC ProductExists( ID )
+{
+	return database( GetValuesFor,~Select ID From Products Where ID = '<ID>'~,ProductID );
+}
+
+NUMERIC OrderExists( ID )
+{
+	return database( GetValuesFor,~Select ID From Orders Where ID = '<ID>'~,ID );
+}
+
+
+NUMERIC UpdateProduct( ID,<OptionalFieldValueArgs> )
+{
+	Query = ~Select * From Products Where ID = '<ID>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		List( AddNew,Record );
+
+		Record( Set,ID,~<ID>~ );
+	}
+
+	num = 0;
+
+	while ( DefinedAndNotNull( p<++num> ) )
+	{
+		Record( Set,~<p<num>>~,~<v<num>>~ );
+	}
+
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC Update( Table,PrimaryKey,<OptionalFieldValueArgs> )	
+{
+	Query = ~Select * From <Table> Where <PrimaryKey>~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		List( AddNew,Record );
+	}
+
+	num = 0;
+
+	while ( DefinedAndNotNull( p<++num> ) )
+	{
+		Record( Set,~<p<num>>~,~<v<num>>~ );
+	}
+
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC UpdateOrder( OrderID,<OptionalFieldValueArgs> )
+{
+	Query = ~Select * From Orders Where ID = '<OrderID>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+	
+	newOrder = FALSE;
+
+	if ( !List( GetFirst,Record ) )
+	{
+		List( AddNew,Record );
+
+		Record( Set,ID,~<OrderID>~ );
+		Record( Set,OrderDate,~<$Date.date>~ );
+		Record( Set,ShipDate,~<$Date.Date>~ );
+		newOrder = TRUE;
+	}
+
+	num = 0;   newStatus = ~~;
+
+	while ( DefinedAndNotNull( p<++num> ) )
+	{
+		if ( SimilarStr(~<p<num>>~,~Status~) )
+		{
+			newStatus = ~<v<num>>~;
+		}
+		
+		if (SimilarStr( ~<p<num>>~, ~Status~ ) && SimilarStr( ~<v<num>>~, ~Convert~ ))
+		{
+			Record( Set,~CameraFileConversionStatus~, 1);
+		}
+		
+		Record( Set,~<p<num>>~,~<v<num>>~ );
+	}
+
+	if ( IsNull(~<$pcon.Record[ShootDescID]>~))
+	{
+		ImagesOrderID = ~<$pcon.Record[ImagesOrderID]>~;
+
+		if ( IsNull(~<ImagesOrderID>~) )
+		{
+			if ( ShootDescExists( ~<OrderID>~,ShootType) )
+			{
+				Record( Set,ShootDescID,~<OrderID>~ );
+				Record( Set,ShootDescType,~<ShootType>~ );
+			}
+		}
+		else
+		{
+			Cmd = ~Select ShootDescID,ShootDescType From Orders Where ID = '<ImagesOrderID>'~;
+			if ( database(GetValuesFor,~<Cmd>~,ShootDescID,ShootType) )
+			{
+				if ( !IsNull(~<ShootDescID>~) )
+				{
+					Record( Set,ShootDescID,~<ShootDescID>~ );
+					Record( Set,ShootDescType,~<ShootType>~ );
+				}
+			}
+		}
+	}
+	 
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+	
+	if ( !<newOrder> && !IsNull(~<newStatus>~) )
+	{
+		TriggerOrderStatusEvent( ~<OrderID>~,~<newStatus>~ );
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC UpdateOrderItem( OrderID,Item,<OptionalFieldValueArgs> )
+{
+	Query = ~Select * From OrderItems Where OrderID = '<OrderID>' AND ID = <Item>~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+	
+	IsNewOrderItem = FALSE;
+
+	if ( !List( GetFirst,Record ) )
+	{
+		List( AddNew,Record );
+
+		Record( Set,OrderID,~<OrderID>~ );
+		Record( Set,ID,~<Item>~ );
+		
+		IsNewOrderItem = TRUE; 
+	}
+
+	NewJobPath = ~~; NewOrderID = ~<OrderID>~;  NewItemID = ~<Item>~;  ProductID = ~~;  Workflow = ~~;
+	PrimaryKeyChanged = WorkflowSpecified = FALSE;
+
+	num = 0;
+
+	while ( DefinedAndNotNull( p<++num> ) )
+	{
+		Record( Set,~<p<num>>~,~<v<num>>~ );
+
+		if ( SimilarStr( ~<p<num>>~,~JobPath~ ) )
+		{
+			NewJobPath = ~<v<num>>~;
+		}
+
+		if ( SimilarStr( ~<p<num>>~,~OrderID~ ) )
+		{
+			NewOrderID = ~<v<num>>~;
+		}
+
+		if ( SimilarStr( ~<p<num>>~,~ID~ ) )
+		{
+			NewItemID = ~<v<num>>~;
+		}
+		
+		if ( SimilarStr( ~<p<num>>~,~ProductID~ ) )
+		{
+			ProductID = ~<v<num>>~;
+		}
+		
+		if ( SimilarStr( ~<p<num>>~,~Workflow~ ) )
+		{
+			Workflow = ~<v<num>>~;
+			WorkflowSpecified = TRUE;
+		}
+	}
+	
+	if ( <IsNewOrderItem> && !IsNull(~<ProductID>~) && !<WorkflowSpecified> )
+	{
+		database( GetValuesFor,~Select Workflow From Products Where ID = '<ProductID>'~,theWorkflow );
+		
+		Record( Set,~Workflow~,~<theWorkflow>~ );
+		Workflow = ~<theWorkflow>~;
+	}
+
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !IsNullOrWhite(~<Workflow>~) )	
+	{
+		if ( FunctionDefined(AddWorkFlow) )
+		{
+			AddWorkflow(~<Workflow>~);
+		}
+		else
+		{
+			Info( ~Unable to add workflow. Upgrade the DP2 version on this workstation.~ );
+		}
+	}
+
+	// OrderItemImages contains related data.  Keep it up to date too!
+
+	if ( !SimilarStr( ~<NewOrderID>~,~<OrderID>~ ) || !SimilarStr( ~<NewItemID>~,~<Item>~ ) )
+	{
+		database( Cmd,~Update OrderItemImages Set ItemOrderID='<NewOrderID>',ItemID=<NewItemID> Where ItemOrderID = '<OrderID>' AND ItemID = <Item>~ );	
+	}
+	else if ( !IsNull( ~<NewJobPath>~ ) )
+	{
+		return MaintainOrderItem( ~<OrderID>~,~<Item>~,~<NewJobPath>~ );
+	}
+
+	return TRUE;
+}
+
+NUMERIC UpdateRawImage( OrderID, Roll, Frame, Path, LowResFileName, OutputFolderPath, InputProfilePath )
+{
+	if (AuditPathString(~<Path>~))
+	{
+		return Failure( Translate(~UpdateRawImage(): File path contained an invalid character(s) for Order <OrderID> Roll <Roll> Frame <Frame>.~) );
+	}
+
+	// Since we're adding a new raw camera file which needs to be coverted, make sure that the order's
+	// status is setup correctly!
+	Cmd = ~Update Orders Set CameraFileConversionStatus = 1 Where ID = '<OrderID>'~;
+
+	if ( !database( Cmd,~<cmd>~ ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure(Translate( ~Failed to change camera file conversion status in Orders table.  <Cmd>.  <theErr>~ ) );
+	}
+
+	// See if the image already exists in DP2.
+	Query = ~Select * From RawImages Where Path = '<Path>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( List( GetFirst,Record ) )
+	{
+		// If the image already exists within DP2, see what order/roll/frame it's in.
+		if (SimilarStr(~<$pcon.Record[OrderID]>~, ~<OrderID>~) &&
+			SimilarStr(~<$pcon.Record[Roll]>~, ~<Roll>~) &&
+			SimilarStr(~<$pcon.Record[Frame]>~, ~<Frame>~) )
+		{
+			// duplicate path is OK if it's the same Order/Roll/Frame
+		} else
+		{
+			// Duplicate path, so error and bail!
+			Log(Session, ~ERROR: Duplicate Path identified in UpdateRawImage for:\n	Order: <OrderID>  Roll: <Roll>  Frame: <Frame>  Path: <Path>~);
+			return FALSE;
+		}
+	}	
+		// else just continue
+
+	ForgetLocal(List);
+
+	// See if the order/roll/frame already exists.
+	Query = ~Select * From RawImages Where OrderID = '<OrderID>' And Roll = '<Roll>' And Frame = '<Frame>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		// If it does not already exist, then create it.
+		List( AddNew,Record );
+
+		Record( Set,OrderID,~<OrderID>~ );
+		Record( Set,Roll,~<Roll>~ );
+		Record( Set,Frame,~<Frame>~ );
+		Record( Set,Processed,~0~ );
+	}
+
+	// Make sure other information is added
+	Record( Set,~Processed~,~0~ );
+	Record( Set,~Path~,~<Path>~ );
+	Record( Set,~LowResImagePath~,~<LowResFileName>~ );
+	Record( Set,~OutputPath~,~<OutputFolderPath>~ );
+	Record( Set,~ICCProfile~,~<InputProfilePath>~ );
+
+	// Save the record
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	ForgetLocal(List);
+
+	// Now create the corresponding record in the Images table.
+	Query = ~Select * From Images Where OrderID = '<OrderID>' And Roll = '<Roll>' And Frame = '<Frame>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		// If it doesn't already exist, then add it.
+		List( AddNew,Record );
+
+		Record( Set,OrderID,~<OrderID>~ );
+		Record( Set,Roll,~<Roll>~ );
+		Record( Set,Frame,~<Frame>~ );
+	}
+
+	Record( Set,ImageSource,~DCR~);
+
+	// This is where we "predict" the output path
+	// First we need to get the selected Setup from the Workstation Settings
+	AutoCommandsSetup = ~~;
+	GetSystemSettings( ~DigitalCamera~,~AutoCommandsSetup~, AutoCommandsSetup, Enabled );
+
+	if (!IsNULL(~<AutoCommandsSetup>~))
+	{
+		// Now, for the given setup, we need to get the file extension.
+		Query = ~SELECT FileExtension FROM DigitalCameraSetups WHERE Setup = '<AutoCommandsSetup>' ~;
+
+		if (!database(GetValuesFor, ~<Query>~, FileExtension) )
+		{
+			// Default to TIFF if the setup value is not found
+			FileExtension = ~.tif~;
+		}
+	} else
+	{
+		// Default to TIFF if there is no setup specified
+		FileExtension = ~.tif~;
+	}
+
+	Record( Set,Reprocess,~1~);
+	Record( Set,Reconverting,~1~);
+
+	FinalOutputPath = ~<OutputFolderPath>\<$Str.$Path.FileName.WithOutExt><FileExtension>~;
+	Record( Set,Path,~<FinalOutputPath>~);
+	
+	GetPIEImageInfo( ~<Path>~, MaxWidth, xRes, MaxHeight, yRes );
+	Record( Set,Width,~<xRes>~);
+	Record( Set,Length,~<yRes>~);
+
+	// Save the record
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	GetSystemSettings( ~DigitalCamera~,~AutoQueueOnCmds~, AutoQueueOnCmds, Enabled);
+
+	if ( Numeric( ~<AutoQueueOnCmds>~ ) )
+	{
+		// Already got the AutoCommandsSetup above.
+		return QueueDigitalFile(database, ~<OrderID>~, ~<Roll>~, ~<Frame>~, ~<Path>~, ~<OutputFolderPath>~, ~<LowResFileName>~, ~<InputProfilePath>~, ~<AutoCommandsSetup>~, TRUE);
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC UpdateRawImageBibble( OrderID, Roll, Frame, RawPath, OutputFolderPath,<OptionalFieldValueArgs> )
+{
+	if (AuditPathString(~<RawPath>~))
+	{
+		return Failure( Translate(~UpdateRawImage(): File path contained an invalid character(s) for Order <OrderID> Roll <Roll> Frame <Frame>.~) );
+	}
+
+	imageFileType = DetermineFileType( ~<RawPath>~ );
+	Priority = ~~;
+	WhiteBalance = ~~;
+	Exposure = ~~;
+	FileType = ~~;
+
+	if ( ~<imageFileType>~ == ~RAW~ )
+	{
+		// Since we're adding a new raw camera file which needs to be coverted, make sure that the order's
+		// status is setup correctly!
+		Cmd = ~Update Orders Set CameraFileConversionStatus = 1 Where ID = '<OrderID>'~;
+
+		if ( !database( Cmd,~<cmd>~ ) )
+		{
+			database( GetErrorDescription,theErr );
+			return Failure(Translate( ~Failed to change camera file conversion status in Orders table.  <Cmd>.  <theErr>~ ) );
+		}
+
+		// Get the Bibble Setup Data, we passed in OutputPath		
+		defaultQuery = ~Select * from WorkstationSettings where Category = 'RawCamera' and Enabled=1 order by Item~;
+		if ( !PGenConList( WSList,Connection,database,Cursor,Forward,Query,~<defaultQuery>~) )
+		{
+			WSList( GetErrorDescription,0,theErr );
+			return Warning( Translate( ~Failed to query the WorkstationSettings table.\n\n<defaultQuery>\n\n<theErr>~ ) ); 
+		}
+
+		FileType = ~~;
+		OutputFolder = ~<OutputFolderPath>~;
+		JPEGQuality = ~~;
+
+		while ( WSList( GetNext,Item ) )
+		{
+			if ( ~<$pcon.Item[Item]>~ == ~FileType~ )
+			{
+				FileType = ~<$pcon.Item[SettingsText]>~;
+			}
+			else if ( ~<OutputFolder>~ == ~~ && ~<$pcon.Item[Item]>~ == ~ConvertPath~ )
+			{
+				OutputFolder = ~<$pcon.Item[SettingsText]>~;
+			}
+			else if ( ~<$pcon.Item[Item]>~ == ~JPEGQuality~ )
+			{
+				JPEGQuality = ~<$pcon.Item[SettingsText]>~;
+			}
+		}
+		ForgetLocal( WSList );
+
+		if ( ~<FileType>~ == ~~ || ~<OutputFolder>~ == ~~ || ~<JPEGQuality>~ == ~~ )
+		{
+
+			defaultQuery = ~Select * from SystemSettings where Category = 'RawCamera' and Enabled=1 order by Item~;
+			if ( !PGenConList( SysList,Connection,database,Cursor,Forward,Query,~<defaultQuery>~) )
+			{
+				SysList( GetErrorDescription,0,theErr );
+				return Warning( Translate( ~Failed to query the SystemSettings table.\n\n<defaultQuery>\n\n<theErr>~ ) ); 
+			}
+
+			while ( SysList( GetNext,Item ) )
+			{
+				if ( ~<FileType>~ == ~~ && ~<$pcon.Item[Item]>~ == ~FileType~ )
+				{
+					FileType = ~<$pcon.Item[SettingsText]>~;
+				}
+				else if ( ~<OutputFolder>~ == ~~ && ~<$pcon.Item[Item]>~ == ~ConvertPath~ )
+				{
+					OutputFolder = ~<$pcon.Item[SettingsText]>~;
+				}
+				else if ( ~<JPEGQuality>~ == ~~ && ~<$pcon.Item[Item]>~ == ~JPEGQuality~ )
+				{
+					JPEGQuality = ~<$pcon.Item[SettingsText]>~;
+				}
+			}
+		}
+
+		if ( ~<FileType>~ == ~~ )
+		{
+			FileType = ~TIFF~ ;
+		}
+
+		if ( ~<JPEGQuality>~ == ~~ )
+		{
+			JPEGQuality = ~100~;
+		}
+
+		ForgetLocal( SysList );
+
+		// See if the image already exists in DP2.
+		Query = ~Select * From RawImages Where Path = '<RawPath>'~;
+
+		if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+		{
+			List( GetErrorDescription,0,theErr );
+			return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+		}
+
+		if ( List( GetFirst,Record ) )
+		{
+			// If the image already exists within DP2, see what order/roll/frame it's in.
+			if (SimilarStr(~<$pcon.Record[OrderID]>~, ~<OrderID>~) &&
+				SimilarStr(~<$pcon.Record[Roll]>~, ~<Roll>~) &&
+				SimilarStr(~<$pcon.Record[Frame]>~, ~<Frame>~) )
+			{
+				// duplicate path is OK if it's the same Order/Roll/Frame
+			} else
+			{
+				// Duplicate path, so error and bail!
+				Log(Session, ~ERROR: Duplicate Path identified in UpdateRawImage for:\n	Order: <OrderID>  Roll: <Roll>  Frame: <Frame>  Path: <RawPath>~);
+				return FALSE;
+			}
+		}	
+			// else just continue
+
+		ForgetLocal(List);
+
+		// See if the order/roll/frame already exists.
+		Query = ~Select * From RawImages Where OrderID = '<OrderID>' And Roll = '<Roll>' And Frame = '<Frame>'~;
+
+		if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+		{
+			List( GetErrorDescription,0,theErr );
+			return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+		}
+
+		if ( !List( GetFirst,Record ) )
+		{
+			// If it does not already exist, then create it.
+			List( AddNew,Record );
+
+			Record( Set,OrderID,~<OrderID>~ );
+			Record( Set,Roll,~<Roll>~ );
+			Record( Set,Frame,~<Frame>~ );
+		}
+
+		// Make sure other information is added
+		Record( Set,~Processed~,~0~ );
+		Record( Set,~Path~,~<RawPath>~ );
+		Record( Set,~LowResImagePath~,~~ );
+		Record( Set,~OutputPath~,~<OutputFolderPath>~ );
+		Record( Set,~ICCProfile~,~~ );
+		Record( Set,~ImageType~,4 );
+
+		num = 0;
+		while ( DefinedAndNotNull( p<++num> ) )
+		{
+			if (SimilarStr( ~<p<num>>~, Priority ) )
+			{
+				Priority = ~<v<num>>~;
+			}
+			else if (SimilarStr( ~<p<num>>~, WhiteBalance) )
+			{
+				WhiteBalance = ~<v<num>>~;
+				Record( Set,~WhiteBalance~,~<WhiteBalance>~ );
+			}
+			else if (SimilarStr( ~<p<num>>~, Exposure) )
+			{
+				Exposure = ~<v<num>>~;
+				Record( Set,~Exposure~,~<Exposure>~ );
+			}
+		}
+
+		// Save the record
+		if ( !List( Update ) )
+		{
+			List( GetErrorDescription,0,theErr );
+			return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+		}
+
+		ForgetLocal(List);
+	}
+	// Now create the corresponding record in the Images table.
+	Query = ~Select * From Images Where OrderID = '<OrderID>' And Roll = '<Roll>' And Frame = '<Frame>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		// If it doesn't already exist, then add it.
+		List( AddNew,Record );
+
+		Record( Set,OrderID,~<OrderID>~ );
+		Record( Set,Roll,~<Roll>~ );
+		Record( Set,Frame,~<Frame>~ );
+	}
+
+	Record( Set,ImageSource,~<imageFileType>~);
+	if ( ~<imageFileType>~ == ~RAW~ )
+	{
+		Record( Set,Reprocess,~1~);
+		Record( Set,Reconverting,~1~);
+	}
+	else
+	{
+		FileType = ~<imageFileType>~;
+	}
+
+	Record( Set,FileType,~<FileType>~);
+	// This is where we "predict" the output path
+	// First we need to get the selected Setup from the Workstation Settings
+	if (!IsNULL(~<FileType>~))
+	{
+		if ( ~<FileType>~ == ~TIFF~ )
+		{
+			FileExtension = ~.tif~;
+		}
+		else
+		{
+			FileExtension = ~.jpg~;
+		}
+	} else
+	{
+		// Default to TIFF if there is no setup specified
+		FileExtension = ~.tif~;
+	}
+
+	FinalOutputPath = ~<OutputFolderPath>\<$Str.$RawPath.FileName.WithOutExt><FileExtension>~;
+	Record( Set,Path,~<FinalOutputPath>~);
+	
+	GetPIEImageInfo( ~<RawPath>~, MaxWidth, xRes, MaxHeight, yRes );
+	Record( Set,Width,~<xRes>~);
+	Record( Set,Length,~<yRes>~);
+
+	num = 0;
+	while ( DefinedAndNotNull( p<++num> ) )
+	{
+		if (SimilarStr( ~<p<num>>~, Priority ) )
+		{
+			continue;
+		}
+		else if (SimilarStr( ~<p<num>>~, WhiteBalance) )
+		{
+			continue;
+		}
+		else if (SimilarStr( ~<p<num>>~, Exposure) )
+		{
+			continue;
+		}
+		else
+		{
+			Record( Set,~<p<num>>~,~<v<num>>~ );
+		}
+	}
+
+	// Save the record
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+	ForgetLocal( List );
+	
+	if ( ~<imageFileType>~ == ~RAW~ )
+	{
+	// Fill in more details based on the parameters provided.
+		QueueRawImageForConversion(~<RawPath>~,~<FinalOutputPath>~,~<FileType>~,~<JPEGQuality>~,~<Priority>~,~<WhiteBalance>~,~<Exposure>~ );
+	}
+	else
+	{
+		Files( Copy, ~<RawPath>~,~<FinalOutputPath>~ );
+	}
+	return TRUE;
+}
+
+
+// NOTE: This function is a patch that is called from UpdateImage() and should be removed eventually. The real function 
+// that should be called is UpdateRawImage()
+NUMERIC UpdateRawImage2( OrderID,Roll,Frame,<OptionalFieldValueArgs> )
+{
+	num = 0;
+
+	ImagePath = ~~;
+	LowResFileName = ~~;
+	OutputFolderPath = ~~;
+	InputProfilePath = ~~;
+
+	// Fill in more details based on the parameters provided.
+	while ( DefinedAndNotNull( p<++num> ) )
+	{
+		if (SimilarStr( ~<p<num>>~, OrigPath ) )
+		{
+			ImagePath = ~<v<num>>~;
+		}
+
+		if (SimilarStr( ~<p<num>>~, LowResImagePath) )
+		{
+			LowResFileName = ~<v<num>>~;
+		}
+
+		if (SimilarStr( ~<p<num>>~, Path) )
+		{
+			OutputFolderPath = ~<v<num>>~;
+		}
+
+		if (SimilarStr( ~<p<num>>~, OrigICCProfile ) )
+		{
+			InputProfilePath = ~<v<num>>~;
+		}
+	}
+
+	return (UpdateRawImage( ~<OrderID>~, ~<Roll>~, ~<Frame>~, ~<ImagePath>~, ~<LowResFileName>~, ~<OutputFolderPath>~, ~<InputProfilePath>~ ));
+}
+
+NUMERIC UpdateImage( OrderID,Roll,Frame,<OptionalFieldValueArgs> )
+{
+
+	if ( RunningVersion( 4.1 ) )
+	{
+		bMakeRaw = FALSE;
+		num = 0;
+		theArgs = ~~;
+		leadingComma = ~~;
+
+		while ( DefinedAndNotNull( p<++num> ) )		// TEMPORARY UNTIL BREMSON CALLS UPDATERAWIMAGE DIRECTLY
+		{
+			theArgs = STR ( <theArgs><leadingComma>~<p<num>>~,~<v<num>>~ );
+
+			leadingComma = ~,~;
+
+			if ( SimilarStr( ~<p<num>>~,~UnProcessed~ ) )
+			{
+				bMakeRaw = TRUE;
+			}
+
+			if ( SimilarStr( ~<p<num>>~,~Path~ ) )
+			{
+				Path = ~<v<num>>~;
+
+				if (AuditPathString(~<Path>~))
+				{
+					return Failure( Translate(~UpdateImage(): File path contained an invalid character(s) for Order <OrderID> Roll <Roll> Frame <Frame>.~) );
+				}
+			}
+		}
+
+		if (<bMakeRaw> == TRUE)
+		{
+			return UpdateRawImage2( ~<OrderID>~,~<Roll>~,~<Frame>~,<theArgs> );
+		}
+	}
+	 
+	Query = ~Select * From Images Where OrderID = '<OrderID>' And Roll = '<Roll>' And Frame = '<Frame>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		List( AddNew,Record );
+
+		Record( Set,OrderID,~<OrderID>~ );
+		Record( Set,Roll,~<Roll>~ );
+		Record( Set,Frame,~<Frame>~ );
+	}
+
+	num = 0;
+
+	while ( DefinedAndNotNull( p<++num> ) )
+	{
+		Record( Set,~<p<num>>~,~<v<num>>~ );
+	}
+
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC	SetImageOrientation( OrderID,Roll,Frame,Orientation )
+{
+	Query = ~Select Path From Images Where OrderID='<OrderID>' AND Roll='<Roll>' AND Frame='<Frame>'~; 
+	
+	if ( !database( GetValuesFor,~<Query>~,Path ) )
+	{
+		return Failure( ~Could not find Image <OrderID>/<Roll>/<Frame> to set the orientation~ );
+	}
+	
+	if ( IsNull(~<Path>~) )
+	{
+		return Failure( ~Image <OrderID>/<Roll>/<Frame> has no path to set the orientation~ );
+	}
+	
+	if ( !SetImageFileOrientation( ~<Path>~,~<Orientation>~ ) )
+	{
+		return Failure( ~Error setting orientation on Image <Path>~ );
+	}
+	
+	return Success( ~Set Orientation to <Orientation> for <Path>~ );
+}
+
+
+NUMERIC AddThumbnail( OrderID,Roll,Frame,Path )
+{
+	return AddImage( ~<OrderID>~,~<Roll>~,~<Frame>~,~<Path>~ );
+}
+
+
+NUMERIC AddImage( OrderID,Roll,Frame,Path,Profile,CropX,CropY,CropWidth,CropLength,RotateFromDisk,AutoBalance,LutIndex )
+{
+	if ( !AddOrder( ~<OrderID>~ ) )
+	{
+		return FALSE;
+	}
+
+	xRes = yRes = 72;
+
+	Info( ~Adding thumbnail to <Path>~ );
+
+	useEmbeddedProfile = FALSE;
+	useEmbeddedProfile = ContainsEmbeddedInputProfile(~<Path>~);
+
+	FileType = ~~; Width = ~~; Length = ~~; PreviewWidth = ~~; PreviewLength = ~~; ColorType = ~~; OpRestrictions = ~~;
+
+	Orientation = 0;
+	if ( <useEmbeddedProfile> )
+	{
+		result = AddThumbNailToImage( ~<Path>~,500,100,FileType,Width,Length,PreviewWidth,PreviewLength,NULL,ColorType,1,OpRestrictions,Orientation );
+	}
+	else
+	{
+		result = AddThumbNailToImage( ~<Path>~,500,100,FileType,Width,Length,PreviewWidth,PreviewLength,Profile,ColorType,1,OpRestrictions,Orientation );
+	}
+
+	Orientation = Numeric(~<$SystemSettings.HonorImageOrientation[PIE]>~) ? ~<Orientation>~ : ~~ ;
+
+	if ( !<result> )
+	{
+		Info( ~<Path> is not an image or we could not add a thumbnail to it~ );
+	}
+
+	if ( <result> < 0 )
+	{ 
+		Info( ~Error adding thumbnail image  to <Path>~ );
+	}
+
+	Query = ~Select * From Images Where OrderID = '<OrderID>' And Roll = '<Roll>' And Frame = '<Frame>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		List( AddNew,Record );
+
+		Record( Set,OrderID,~<OrderID>~ );
+		Record( Set,Roll,~<Roll>~ );
+		Record( Set,Frame,~<Frame>~ );
+	}
+
+	if ( ~<ColorType>~ == ~2~ )	{ Profile = ~srgb~; }
+
+	if ( ~<Path>~ != ~~ )		{ Record( Set,Path,~<Path>~ ); }
+//	if ( ~<Profile>~ != ~~  && !<useEmbeddedProfile>)	{ Record( Set,ICCProfile,~<Profile>~ ); } // <- to only assign a profile if no embedded profile
+	if ( ~<Profile>~ != ~~ )	{ Record( Set,ICCProfile,~<Profile>~ ); }
+	if ( ~<CropX>~ != ~~ )		{ Record( Set,CropX,~<CropX>~ ); }
+	if ( ~<CropY>~ != ~~ )		{ Record( Set,CropY,~<CropY>~ ); }
+	if ( ~<CropWidth>~ != ~~ )	{ Record( Set,CropWidth,~<CropWidth>~ ); }
+	if ( ~<CropLength>~ != ~~ )	{ Record( Set,CropLength,~<CropLength>~ ); }
+
+	if ( ~<FileType>~ != ~~ )		{ Record( Set,FileType,~<FileType>~ ); }
+
+	if ( ~<PreviewWidth>~ != ~~ )	{ Record( Set,PreviewWidth,~<PreviewWidth>~ ); }
+	if ( ~<PreviewLength>~ != ~~ )	{ Record( Set,PreviewLength,~<PreviewLength>~ ); }
+	if ( ~<Width>~ != ~~ )			{ Record( Set,Width,~<Width>~ ); }
+	if ( ~<Length>~ != ~~ )			{ Record( Set,Length,~<Length>~ ); }
+	if ( (~<RotateFromDisk>~ == ~~) && (~<Orientation>~ == ~90~ || ~<Orientation>~ == ~270~) )
+	{
+		Record( Set,RotateFromDisk,~<Orientation>~ );
+	}
+	else
+	{
+		if ( ~<RotateFromDisk>~ == ~~ && (~<Orientation>~ == ~0~ || ~<Orientation>~ == ~180~ ) )
+		{
+			Record( Set,RotateFromDisk,~<Orientation>~ );
+		}
+		else
+		{
+			if ( ~<RotateFromDisk>~ != ~~ )	{ Record( Set,RotateFromDisk,~<RotateFromDisk>~ ); }
+		}
+	}
+
+	if ( ~<AutoBalance>~ != ~~ )	{ Record( Set,AutoBalance,~<AutoBalance>~ ); }
+	else							{ Record( Set,AutoBalance,~1~ ); }
+
+	if ( ~<ColorType>~ != ~~ )		{ Record( Set,ColorType,<ColorType> ); }
+	else							{ Record( Set,ColorType,0 ); }
+	
+	if ( ~<OpRestrictions>~ != ~~ )	{ Record( Set,OpRestrictions,<OpRestrictions> ); }
+	else							{ Record( Set,OpRestrictions,0 ); }
+
+	if ( ~<LutIndex>~ != ~~ )
+	{
+		Record( Set,LutIndex,~<LutIndex>~ );
+	}
+	else if ( GetSystemSettings(~Images~, ~LutIndex~, LutIndex, Enabled ) )
+	{
+		if ( !IsNULL( ~<LutIndex>~ ) && <Enabled> )
+		{
+			Record( Set,LutIndex,<LutIndex> );
+		}
+	}
+
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	return Success( Translate( ~Added Image <OrderID>,<Roll>,<Frame>.  <Path>~ ) );
+}
+
+NUMERIC AddImageAndThumbnail( OrderID,Roll,Frame,Path,Profile,CropX,CropY,CropWidth,CropLength,RotateFromDisk,AutoBalance,LutIndex,HonorExifRotationTag,<OptionalFieldValueArgs> )
+{
+	if ( !AddOrder( ~<OrderID>~ ) )
+	{
+		return FALSE;
+	}
+
+	xRes = yRes = 72;
+
+	Info( ~Adding thumbnail to <Path>~ );
+
+	useEmbeddedProfile = FALSE;
+	useEmbeddedProfile = ContainsEmbeddedInputProfile(~<Path>~);
+
+	FileType = ~~; Width = ~~; Length = ~~; PreviewWidth = ~~; PreviewLength = ~~; ColorType = ~~; OpRestrictions = ~~;
+
+	Orientation = 0;
+	if ( <useEmbeddedProfile> )
+	{
+		result = AddThumbNailToImage( ~<Path>~,500,100,FileType,Width,Length,PreviewWidth,PreviewLength,NULL,ColorType,1,OpRestrictions,Orientation );
+	}
+	else
+	{
+		result = AddThumbNailToImage( ~<Path>~,500,100,FileType,Width,Length,PreviewWidth,PreviewLength,Profile,ColorType,1,OpRestrictions,Orientation );
+	}
+
+	Orientation = Numeric(~<HonorExifRotationTag>~) ? ~<Orientation>~ : ~~ ;
+
+	if ( !<result> )
+	{
+		Info( ~<Path> is not an image or we could not add a thumbnail to it~ );
+	}
+
+	if ( <result> < 0 )
+	{ 
+		Info( ~Error adding thumbnail image  to <Path>~ );
+	}
+
+	Query = ~Select * From Images Where OrderID = '<OrderID>' And Roll = '<Roll>' And Frame = '<Frame>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		List( AddNew,Record );
+
+		Record( Set,OrderID,~<OrderID>~ );
+		Record( Set,Roll,~<Roll>~ );
+		Record( Set,Frame,~<Frame>~ );
+	}
+
+	if ( ~<ColorType>~ == ~2~ )	{ Profile = ~srgb~; }
+
+	if ( ~<Path>~ != ~~ )		{ Record( Set,Path,~<Path>~ ); }
+//	if ( ~<Profile>~ != ~~  && !<useEmbeddedProfile>)	{ Record( Set,ICCProfile,~<Profile>~ ); } // <- to only assign a profile if no embedded profile
+	if ( ~<Profile>~ != ~~ )	{ Record( Set,ICCProfile,~<Profile>~ ); }
+	if ( ~<CropX>~ != ~~ )		{ Record( Set,CropX,~<CropX>~ ); }
+	if ( ~<CropY>~ != ~~ )		{ Record( Set,CropY,~<CropY>~ ); }
+	if ( ~<CropWidth>~ != ~~ )	{ Record( Set,CropWidth,~<CropWidth>~ ); }
+	if ( ~<CropLength>~ != ~~ )	{ Record( Set,CropLength,~<CropLength>~ ); }
+
+	if ( ~<FileType>~ != ~~ )		{ Record( Set,FileType,~<FileType>~ ); }
+
+	if ( ~<PreviewWidth>~ != ~~ )	{ Record( Set,PreviewWidth,~<PreviewWidth>~ ); }
+	if ( ~<PreviewLength>~ != ~~ )	{ Record( Set,PreviewLength,~<PreviewLength>~ ); }
+	if ( ~<Width>~ != ~~ )			{ Record( Set,Width,~<Width>~ ); }
+	if ( ~<Length>~ != ~~ )			{ Record( Set,Length,~<Length>~ ); }
+	if ( (~<RotateFromDisk>~ == ~~) && (~<Orientation>~ == ~90~ || ~<Orientation>~ == ~270~) )
+	{
+		Record( Set,RotateFromDisk,~<Orientation>~ );
+	}
+	else
+	{
+		if ( ~<RotateFromDisk>~ == ~~ && (~<Orientation>~ == ~0~ || ~<Orientation>~ == ~180~ ) )
+		{
+			Record( Set,RotateFromDisk,~<Orientation>~ );
+		}
+		else
+		{
+			if ( ~<RotateFromDisk>~ != ~~ )	{ Record( Set,RotateFromDisk,~<RotateFromDisk>~ ); }
+		}
+	}
+
+	if ( ~<AutoBalance>~ != ~~ )	{ Record( Set,AutoBalance,~<AutoBalance>~ ); }
+	else							{ Record( Set,AutoBalance,~1~ ); }
+
+	if ( ~<ColorType>~ != ~~ )		{ Record( Set,ColorType,<ColorType> ); }
+	else							{ Record( Set,ColorType,0 ); }
+	
+	if ( ~<OpRestrictions>~ != ~~ )	{ Record( Set,OpRestrictions,<OpRestrictions> ); }
+	else							{ Record( Set,OpRestrictions,0 ); }
+
+	if ( ~<LutIndex>~ != ~~ )
+	{
+		Record( Set,LutIndex,~<LutIndex>~ );
+	}
+	else if ( GetSystemSettings(~Images~, ~LutIndex~, LutIndex, Enabled ) )
+	{
+		if ( !IsNULL( ~<LutIndex>~ ) && <Enabled> )
+		{
+			Record( Set,LutIndex,<LutIndex> );
+		}
+	}
+
+	num = 0;
+
+	while ( DefinedAndNotNull( p<++num> ) )
+	{
+		Record( Set,~<p<num>>~,~<v<num>>~ );
+	}
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	return Success( Translate( ~Added Image <OrderID>,<Roll>,<Frame>.  <Path>~ ) );
+}
+
+
+
+NUMERIC AddStdInstruction( ID,Std,Description,BatchSetup )
+{
+	Query = ~Select * From RetouchCodes Where ID = '<ID>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		List( AddNew,Record );
+
+		Record( Set,ID,~<ID>~ );
+	}
+
+	if ( ~<Std>~ != ~~ )			{ Record( Set,Std,~<Std>~ ); }
+	if ( ~<Description>~ != ~~ )	{ Record( Set,Description,~<Description>~ ); }
+	
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( DefinedAndNotNull( BatchSetup ) )
+	{
+		if ( !AssignBatchSetupToCode( database,~<ID>~,~<BatchSetup>~ ) )
+		{
+			return Failure( Translate( ~Failed to assign BatchSetup <BatchSetup> to Retouch Code <ID>.~ ) );
+		}
+	}
+
+	return Success( Translate( ~Added Image Instruction.  <ID>~ ) );
+}
+
+	
+NUMERIC AddImageInstruction( OrderID,Roll,Frame,ID,Description,Std,Actual,Complete )
+{
+	if ( !AddOrder( ~<OrderID>~ ) )
+	{
+		return FALSE;
+	}
+
+	Key = ~OrderID = '<OrderID>' AND Roll = '<Roll>' AND Frame = '<Frame>' AND ID = '<ID>'~;
+
+	Query = ~Select * From Retouch Where <Key>~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		List( AddNew,Record );
+
+		Record( Set,OrderID,~<OrderID>~ );
+		Record( Set,Roll,~<Roll>~ );
+		Record( Set,Frame,~<Frame>~ );
+		Record( Set,ID,~<ID>~ );
+	}
+
+	if ( ~<Description>~ == ~~ )	// IF NO DESCRIPTION PASSED IN, LOOK UP THE DESCRIPTION BASED ON THE ID
+	{
+		Query = ~Select Description,Std From RetouchCodes Where ID = '<ID>'~;
+
+		database( Cursor,Forward,GetValuesFor,~<Query>~,Description,Std );
+	}
+
+	if ( ~<Description>~ != ~~ )		{ Record( Set,Description,~<Description>~ ); }
+	if ( ~<Std>~ != ~~ )				{ Record( Set,Std,~<Std>~ ); }
+	if ( ~<Actual>~ != ~~ )				{ Record( Set,Actual,~<Actual>~ ); }
+	if ( ~<Complete>~ != ~~ )			{ Record( Set,Complete,~<Complete>~ ); }
+	
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( GetSystemSettings( ~AutoRetouching~,~KPARS~,Value,Enabled ) )
+	{
+		if ( Numeric(~<Value>~) && <Enabled> )
+		{
+			if ( AutoRetouchingNeeded( database,~<ID>~ ) && (~<Complete>~ == ~0~ || ~<Complete>~ == ~~ ) )
+			{
+				AddToKparsBatch( database,~<OrderID>~,~<Roll>~,~<Frame>~,~<ID>~ );
+			}
+		}
+	}
+	
+	return Success( Translate( ~Added Instructions for Image <OrderID>,<Roll>,<Frame>.  <ID>~ ) );
+}
+
+
+NUMERIC AddImageToScan( OrderID,Roll,Frame,aDen,aRed,aGrn,aBlu,cDen,cRed,cGrn,cBlu,Scan,Retouch,Inspect,Punch,XOffset,YOffset,SubjectID )
+{
+	if ( !AddOrder( ~<OrderID>~ ) )
+	{
+		return FALSE;
+	}
+
+	Query = ~Select * From Images Where OrderID = '<OrderID>' And Roll = '<Roll>' And Frame = '<Frame>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		List( AddNew,Record );
+
+		Record( Set,OrderID,~<OrderID>~ );
+		Record( Set,Roll,~<Roll>~ );
+		Record( Set,Frame,~<Frame>~ );
+	}
+
+	if ( ~<aDen>~ != ~~ )		{ Record( Set,aDen,~<aDen>~ ); }
+	if ( ~<aRed>~ != ~~ )		{ Record( Set,aRed,~<aRed>~ ); }
+	if ( ~<aGrn~ != ~~ )		{ Record( Set,aGrn,~<aGrn>~ ); }
+	if ( ~<aBlu>~ != ~~ )		{ Record( Set,aBlu,~<aBlu>~ ); }
+
+	if ( ~<cDen>~ != ~~ )		{ Record( Set,cDen,~<cDen>~ ); }
+	if ( ~<cRed>~ != ~~ )		{ Record( Set,cRed,~<cRed>~ ); }
+	if ( ~<cGrn>~ != ~~ )		{ Record( Set,cGrn,~<cGrn>~ ); }
+	if ( ~<cBlu>~ != ~~ )		{ Record( Set,cBlu,~<cBlu>~ ); }
+
+	if ( ~<Scan>~ != ~~ )		{ Record( Set,Scan,~<Scan>~ ); }
+	if ( ~<Retouch>~ != ~~ )	{ Record( Set,Retouch,~<Retouch>~ ); }
+	if ( ~<Inspect>~ != ~~ )	{ Record( Set,Inspect,~<Inspect>~ ); }
+
+	if ( ~<Punch>~ != ~~ )		{ Record( Set,Punch,~<Punch>~ ); }
+	if ( ~<XOffset>~ != ~~ )	{ Record( Set,XOffset,~<XOffset>~ ); }
+	if ( ~<YOffset>~ != ~~ )	{ Record( Set,YOffset,~<YOffset>~ ); }
+
+	if ( ~<SubjectID>~ != ~~ )	{ Record( Set,SubjectID,~<SubjectID>~ ); }
+	
+	Record( Set,AutoBalance,0 );
+	Record( Set,LutIndex,0 );
+
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	return Success( Translate( ~Added Image Data <OrderID>,<Roll>,<Frame>~ ) );
+}
+
+NUMERIC AutoBalanceOrder( OrderID,SBAOption,Preference )
+{
+
+	SBALevel = GetSBALevel( <SBAOption> );
+
+	preferenceFile = GetSBAPreference( ~<Preference>~ );
+
+	Query = ~Select * From Images Where OrderID = '<OrderID>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	SbaInit();
+
+	moreImages = List( GetFirst,Record );
+	while ( <moreImages> )
+	{
+		result = FALSE;
+
+		Frame = ~~;
+		Path  = ~~;
+		ICCProfile = ~~;
+
+		embeddedProfile = ~~;
+		embeddedProfileChecked = FALSE;
+
+		den		= 0;
+		red		= 0;
+		green	= 0;
+		blue	= 0;
+
+		Frame		= ~<$pCon.Record[Frame]>~;
+		Path		= ~<$pCon.Record[Path]>~;
+		Roll		= ~<$pCon.Record[Roll]>~;
+		ICCProfile	= ~<$pCon.Record[ICCProfile]>~;
+		ColorType	= Numeric( ~<$pCon.Record[ColorType]>~ );
+
+		if ( IsNULL( ~<Path>~ ) )
+		{
+			moreImages = List( GetNext, Record );
+			continue;
+		}
+					
+		result = BalanceImage( 0,~<preferenceFile>~,~<SbaLevel>~,
+								~<OrderID>~,~<Roll>~,~<Frame>~,~<Path>~,~<ICCProfile>~,
+								~<embeddedProfile>~,~<embeddedProfileChecked>~,<ColorType> );
+
+		if ( Numeric( ~<result>~ ) )
+		{
+			GetSbaSliders( den,red,green,blue );
+			colorType = GetColorType();
+
+			ImageCorrections( UpdateDRGB,~<Path>~,<den>,<red>,<green>,<blue>,<colorType> );
+		}
+
+		moreImages = List( GetNext, Record );
+
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC AutoBalanceImage( OrderID,Roll,Frame,SBAOption,Preference )
+{
+	result = FALSE;
+
+	SBALevel = GetSBALevel( <SBAOption> );
+
+	preferenceFile = GetSBAPreference( ~<Preference>~ );
+
+	Query = ~Select * From Images Where OrderID = '<OrderID>' AND Roll = '<Roll>' AND Frame = '<Frame>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	SbaInit();
+
+	moreImages = List( GetFirst,Record );
+	if ( <moreImages> )
+	{
+		result = FALSE;
+
+		thumbnailImage = ~~;
+		embeddedProfile = ~~;
+		embeddedProfileChecked = FALSE;
+
+		den		= 0;
+		red		= 0;
+		green	= 0;
+		blue	= 0;
+
+		Path		= ~<$pCon.Record[Path]>~;
+		ICCProfile	= ~<$pCon.Record[ICCProfile]>~;
+		ColorType	= Numeric( ~<$pCon.Record[ColorType]>~ );
+
+		if ( IsNULL( ~<Path>~ ) )
+		{
+			return FALSE;
+		}
+
+		result = BalanceImage( ~<thumbnailImage>~,~<preferenceFile>~,~<SbaLevel>~,
+								~<OrderID>~,~<Roll>~,~<Frame>~,~<Path>~,~<ICCProfile>~,
+								~<embeddedProfile>~,~<embeddedProfileChecked>~,<ColorType> );
+
+		if ( Numeric( ~<result>~ ) )
+		{
+			GetSbaSliders( den,red,green,blue );
+			colorType = GetColorType();
+
+			ImageCorrections( UpdateDRGB,~<Path>~,<den>,<red>,<green>,<blue>,<colorType> );
+		}
+	}
+
+	return <result>;
+}
+
+
+NUMERIC AutoEnhanceOrder( OrderID )
+{
+	result = FALSE;
+
+	Query = ~Select Roll,Frame,Path From Images Where OrderID = '<OrderID>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	result = FALSE;
+	while ( List( GetNext,Record ) )
+	{
+		result = FALSE;
+		Path   = ~<$pCon.Record[Path]>~;
+
+		if ( !IsNULL( ~<Path>~ ) )
+		{
+
+			result = AutoEnhance( ~<Path>~ );
+			if ( !Numeric( ~<result>~ ) )
+			{
+				Log( Session,Translate( ~Failed to auto enhance image <Path>~ ) );
+			}
+
+		}
+		else
+		{
+			Log( Session,Translate( ~Auto enhance failed due to blank path for OrderID: <OrderID>, Roll: <Roll>, Frame: <Frame>.~ ) );
+		}
+
+	}
+	
+	return <result>;
+}
+
+
+NUMERIC QueueRawImageForConversion(RawFilePath,OutputPath,FileType,JpgQuality,Priority,WhiteBalance,Exposure)
+{
+	if ( !QueueRawFile(~<RawFilePath>~,~<OutputPath>~,~<FileType>~,~<JpgQuality>~,~<Priority>~,~<WhiteBalance>~,~<Exposure>~) )
+	{
+		return Failure( ~Failed to queue <RawFilePath> for raw file conversion to <OutputPath>~ );
+	}
+	
+	return Success( ~Queued <RawFilePath> for raw file conversion to <OutputPath>~ );	
+}
+
+
+NUMERIC AutoEnhanceImage( OrderID,Roll,Frame )
+{
+	result = FALSE;
+
+	Query = ~Select Path From Images Where OrderID = '<OrderID>' AND Roll = '<Roll>' AND Frame = '<Frame>'~;
+
+	if ( !database( GetValuesFor,~<Query>~,Path ) )
+	{
+		Log( Session,Translate( ~Image query failed for OrderID: <OrderID>, Roll: <Roll>, Frame: <Frame>.~ ) );
+		return FALSE;
+	}
+	
+	if ( IsNULL( ~<Path>~ ) )
+	{
+		Log( Session,Translate( ~Auto enhance failed due to blank path for OrderID: <OrderID>, Roll: <Roll>, Frame: <Frame>.~ ) );
+		return FALSE;
+	}
+	
+	if ( !AutoEnhance(~<Path>~) )
+	{
+		Log( Session,Translate( ~Failed to auto enhance image <Path>~ ) );
+		return FALSE;
+	}
+	
+	return TRUE;
+
+}
+
+
+NUMERIC ProcessTextFile( Path )		// NOT DEBUGGED YET
+{
+	FilePath = ~<$Str.$Path.Path>~;
+	FileName = ~<$Str.$Path.Filename.WithoutExt>~;
+	Extension = ~<$Str.$Path.Ext>~;
+
+	Source = ~DRIVER={Microsoft Text Driver (*.txt; *.csv)};DBQ=<FilePath>;~;
+	QuerySource = ~<Extension>~ == ~~ ? ~<FileName>~ : ~<FileName>#<Extension>~;
+	Query = ~Select * from [<QuerySource>] ~;
+
+//	StatusBarText( ~Opening <Source>  <FilePath>~ );
+
+	Provider = ~Microsoft OLE DB Provider For ODBC Drivers~;
+
+	if ( !ADO( DataConnection,Provider,~<Provider>~,Source,~<Source>~,Connect ) ) 
+	{
+		DataConnection( GetErrorInformation,theErr );
+		return Failure( Translate( ~Could not open <FilePath>.  <theErr>~ ) );
+	}
+
+	if ( !PGenConList( List,Connection,DataConnection,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );		
+		return Failure( Translate( ~Failed to load data from <FilePath>. <Query>.  <theErr>~ ) );
+	}
+
+	return ProcessJobList( List );
+}
+
+
+NUMERIC ProcessJobList( &List )	// NOT DEBUGGED YET
+{
+	if ( !database( BeginTransaction ) )
+	{
+		return Failure( Translate( ~Could not connect to the database~ ) );
+	}
+
+	BatchID = UniquePrintBatchID();
+	PrintBatchSeq = ~0~;
+
+	LastOrderID = UniqueID(~~,10);
+
+	Index = 0;
+
+	while ( List( GetNext,Record ) )
+	{
+		OrderID = (Record( GetFieldIndex,OrderID ) >= 0) ? ~<$pcon.Record[OrderID]>~ : ~<LastOrderID>~;
+
+		if ( !GenerateJob( database,~<BatchID>~,~<OrderID>~,Record,<++Index> ) )
+		{
+			database( RollBackTransaction );
+			return FALSE;
+		}
+	}
+	
+	database( CommitTransaction );
+
+	return TRUE;
+}
+
+NUMERIC CreateJobQueuePath(OrderID,ItemID,PrinterQueue,&JobPath)
+{
+	Directory( Create,~<$App.ShareDirectory>\JobQueueFiles~ );
+	Directory( Create,~<$App.ShareDirectory>\JobQueueFiles\<PrinterQueue>~ );
+	if ( !Files( UniqueFilename,~<$App.ShareDirectory>\JobQueueFiles\<PrinterQueue>\<PrintBatchID>_<OrderID>_<ItemID>~,JobPath ) )  // should this be sharedir ?
+	{
+		return Failure( Translate( ~Failed to create a unique filename~ ) );
+	}
+	return TRUE;
+}
+
+STR CreateJobPath( OrderID,Item )	// NOT DEBUGGED YET
+{
+	JobPath = ~<$App.ShareDirectory>\OrderJobs\<OrderID>~;
+	JobName = ~Job_<OrderID>_<Item>~;
+
+	Directory( Create,~<JobPath>~ );
+
+	return ~<JobPath>\<JobName>~;
+}
+
+
+NUMERIC GetLayoutForProductID( &dBase,ProductID,&ProductLayoutPath,&IsPackage,&ProdType,&Workflow )	
+{
+	if ( ~<ProductID>~ == ~~ )
+	{
+		return Failure( Translate( ~No product specified~ ) );
+	}
+
+	Query = ~Select ProductLayoutPath,Package,ProdType,Workflow From Products Where ID = '<ProductID>'~;
+
+	if ( !dBase( GetValuesFor,~<Query>~,ProductLayoutPath,IsPackage,ProdType,Workflow ) )
+	{
+		dBase( GetErrorDescription,theErr );		
+		return Failure( Translate( ~Product <ProductID> does not have a layout. <theErr>~ ) );
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC GenerateJob( &dBase,BatchID,OrderID,&Record,Index )	// NOT DEBUGGED YET
+{
+	ProdType = ~~; ProductLayoutPath = ~~; IsPackage = FALSE;
+	
+	if ( !GetLayoutForProductID( dBase,~<$pcon.Record[ProductID]>~,ProductLayoutPath,IsPackage,ProdType,Workflow ) )
+	{
+		return FALSE;
+	}
+
+	Success( Translate( ~Processing <$pcon.Record[ProductID]>~ ) );
+
+	if ( !Document( Job,ParseFile,~<ProductLayoutPath>~ ) )
+	{
+		return Failure( Translate( ~An error occured while parsing the layout at <ProductLayoutPath>~ ) );
+	}
+
+	if ( !Job( GetRenderList,0,RenderList ) )
+	{ 
+		return Failure( Translate( ~There was no render list for <ProductLayoutPath>~ ) );
+	}
+
+	if ( !RenderList( GetOutputNode,OutputNode ) )
+	{
+		return Failure( Translate( ~There was no output device specified for <ProductLayoutPath>~ ) );
+	}
+
+	OutputNode( Get,~QueueName:~,QueueName );
+
+	if ( ~<QueueName>~ == ~~ )
+	{
+		return Failure( Translate( ~There was no output queue specified for <ProductLayoutPath>~ ) );
+	}
+
+	if ( RenderList( GetNonNullNode,~IPrompt:~,0,TheNode ) )
+	{
+		TheNode( Set,~IFile:~,~<$pcon.Record[Image1]>~ );
+
+		ForgetLocal( TheNode );
+	}
+
+	if ( RenderList( GetOutputNode,OutputNode ) )
+	{
+		OutputNode( Set,~Annotation1:~,~<$pcon.Record[BackPrint1]>~ );
+		OutputNode( Set,~Annotation2:~,~<$pcon.Record[BackPrint2]>~ );
+
+		ForgetLocal( OutputNode );
+	}
+
+	JobPath = CreateJobPath( ~<OrderID>~,~<Index>~ );
+
+	RenderList( SetFileType,~Job~ );
+
+	if ( !RenderList( WriteJob,~<JobPath>~ ) )
+	{ 
+		return Failure( Translate( ~Failed to write <JobPath>~ ) );
+	}
+
+	OrderItemID = ~<Index>~;
+	Qty =(Record( GetFieldIndex,Qty ) >= 0) ? ~<$pcon.Record[Qty]>~ : ~1~;
+
+	if ( !AddJobToDatabase( dbase,~<BatchID>~,~<OrderID>~,~<OrderItemID>~,~<Qty>~,
+							~<OrderItemID>~,~<JobPath>~,~<QueueName>~ ) )
+	{
+		return FALSE;
+	}
+
+	RenderList( MaintainCrossReference,~<OrderID>~,~<OrderItemID>~,TRUE );
+
+	return TRUE;
+}
+
+
+NUMERIC MaintainOrderItems( OrderID,CreatePreviewIcon )	
+{
+	Success( Translate( ~Maintaining Order <OrderID>~ ) );
+
+	Query = ~Select ID From OrderItems Where OrderID = '<OrderID>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Forward,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	while ( List( GetNext,OrderItem ) )
+	{
+		ReturnOnFailure( MaintainOrderItem( ~<OrderID>~,~<$pcon.OrderItem[ID]>~,~~,DefinedAndTRUE(CreatePreviewIcon) ) );
+	}
+
+	return TRUE;
+}
+
+
+NUMERIC MaintainOrderItem( OrderID,ID,ItemJobPath,CreatePreviewIcon )	
+{
+	Success( Translate( ~Maintaining OrderItem <OrderID>,<ID>~ ) );
+
+	if ( IsNull( ~<ItemJobPath>~ ) )	// Look it up if not passed in
+	{
+		Query = ~Select JobPath From OrderItems Where OrderID = '<OrderID>' AND ID = <ID>~;
+
+		if ( !database(GetValuesFor,~<Query>~,ItemJobPath) )
+		{
+			Info( ~MaintainOrderItem failed. OrderItem for OrderID = '<OrderID>' AND ID = <ID> does not exist~ );
+			return TRUE;
+		}
+
+		ReturnOnSuccess( IsNull(~<ItemJobPath>~) );
+	}
+
+	if ( !Document( Job,SetNoMessageBox,TRUE,ParseFile,~<ItemJobPath>~ ) )
+	{
+		return Failure( Translate( ~An error occured while parsing the layout at <ItemJobPath>~ ) );
+	}
+
+	if ( !Job( GetRenderList,0,RenderList ) )
+	{ 
+		return Failure( Translate( ~There was no render list for <ItemJobPath>~ ) );
+	}
+
+	RenderList( SetConnection,database );
+
+	if ( !RenderList( MaintainCrossReference,~<OrderID>~,~<ID>~,TRUE ) )
+	{
+		return Failure( Translate( ~Error maintaining OrderItem for <OrderID>,<ID>~ ) );
+	}
+
+	if ( DefinedAndTRUE(CreatePreviewIcon) )
+	{
+		RenderList( CreatePreviewIcon,~<ItemJobPath>~ );
+	}
+
+	return TRUE;
+}
+
+
+
+NUMERIC AddJobToDatabase( BatchID,OrderID,OrderItemID,OrderItemQty,OrderItemSequence,JobPath,QueueName,Priority )
+{
+	Now = ~<$Date.SharedDatabase>~;
+	Now = Time();
+
+	DataFields = ~JobPath,QueueName,SubmitDate,BatchID,OrderID,OrderItemID,OrderItemQty,OrderItemSequence,JobID,PrintStatus,Priority,Owner~;
+
+	while ( TRUE )
+	{
+		JobID = GetUniqueJobID();
+
+		Values = ~'<JobPath>','<QueueName>',<Now>,'<BatchID>','<OrderID>',<OrderItemID>,<OrderItemQty>,<OrderItemSequence>,'<JobID>',8,<Priority>,'<$App.UserName>'~;
+
+		Cmd = ~Insert Into JobQueue(<DataFields>) Values(<Values>)~;
+
+		if ( database( Cmd,~<Cmd>~ ) )
+			break;
+
+		database( GetErrorNumber,err,GetErrorDescription,theErr );
+
+		if ( !database( ErrorIs,<err>,~Duplicate~) )
+		{			
+			return Failure( Translate( ~Failed to add job to the JobQueue.  <Cmd>.  <theErr>~ ) );
+		}
+	}
+
+	if ( FunctionDefined( PostDocMessage ) )
+	{
+		PostDocMessage( ~Job Queue~,~DataHasChanged();~ );
+	}
+
+	return TRUE;
+}
+
+
+// CONVERT LAYOUT FROM KPIS TO DP2 FORMAT
+
+NUMERIC ConvertLayout( LayoutPath , SavePath)
+{
+	WaitCursor( Begin );
+
+	if ( !Document( Job,ParseFile,~<LayoutPath>~ ) )
+	{
+		WaitCursor( End );
+		return Warning( ~An error occured while parsing the job at <LayoutPath>~ );
+	}
+
+	if ( !Job( GetRenderList,0,RenderList ) )
+	{ 
+		WaitCursor( End );
+		return Warning( ~There was no render list for <LayoutPath>~ );
+	}
+
+	if ( !RenderList( WriteJob,~<SavePath>~ ) )
+	{ 
+		return Warning( ~Failed to write <SavePath>~ );
+	}
+
+	WaitCursor( End );
+
+	return TRUE;
+}
+
+
+NUMERIC UpdateShootDesc( ShootDescID,ShootType,<OptionalFieldValueArgs> )
+{
+	Query = ~Select * From ShootDescription<ShootType> Where ID = '<ShootDescID>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		if ( OrderExists(~<ShootDescID>~) )
+		{	return Failure( Translate( ~Cannot add ShootDescription record with ID = <ShootDescID>. Same ID as an Order's ID~ ) );	}
+
+		List( AddNew,Record );
+
+		Record( Set,ID,~<ShootDescID>~ );
+	}
+
+	num = 0;
+
+	while ( DefinedAndNotNull( p<++num> ) )
+	{
+		Record( Set,~<p<num>>~,~<v<num>>~ );
+	}
+
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	return TRUE;
+}
+
+
+// UTILITIES
+
+NUMERIC ShootDescExists( ID,&ShootType )
+{
+	StringList(TypeList,New);
+	if ( GetTypeListForShootDescID(~<ID>~,TypeList,FALSE) )  // ShootDescription exists with same Id as Order
+	{
+		TypeList(GetStringAt,0,ShootType);  // Use first Type found
+		return TRUE;
+	}
+
+	return FALSE;
+}
+
+
+// ShootId - ShootDescription Id wanting the types for
+// TypeList  - Returns list of ShootDescription types for tables which ShootId found in
+// doCommaList - TRUE - returns comma separted list of types
+//				 FALSE - returns a ScannerUStringList
+// If TypeList is ScannerUStringList, it must be created before calling this routine (StringList(TypeList,New);)
+// Returns Count of number of types found or 0 if error.
+NUMERIC GetTypeListForShootDescID(ShootId,&TypeList,doCommaList)
+{
+	if ( !PGenConList( SchemaList,Connection,database,Cursor,Keyset,Schema,Tables ) )
+	{ 
+		SchemaList( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages, SchemaQueryFailed, ~Tables~, ~<theErr>~ ) );
+	}
+
+	SchemaList( Filter,~Table_Name Like 'ShootDescription%'~ );
+
+	Count = 0;
+	if (<doCommaList>)
+	{	TypeList = ~~;	}
+
+	while ( SchemaList( GetNext,ShootTable ) )
+	{
+		substr( ~<$pcon.ShootTable[Table_Name]>~,strlen(~ShootDescription~),99,Type);
+
+		theQuery = ~Select ID from ShootDescription<Type> where ID = '<ShootId>'~;
+		if ( database(GetValuesFor,~<theQuery>~,theId) )
+		{
+			if (<doCommaList>)
+			{
+				TypeList = ~<TypeList>~ == ~~ ? ~<Type>~ : ~<TypeList>,<Type>~;
+			}
+			else
+			{
+				TypeList(AddString,~<Type>~);
+			}
+
+			++Count;
+		}
+	}
+
+	return <Count>;
+}
+
+// FOR THE GIVEN ORDER ID, GET THE SUBJECTINFO ID AND INFOTYPE.
+
+NUMERIC GetSubjectOrderIDInfoType( theOrderID, &theInfoType, &theSubjectInfoOrderId)
+{
+	theQuery = ~Select ImagesOrderID ,InfoType, ShootDescID From Orders Where ID = '<theOrderID>'~;
+
+	Success = database(GetValuesFor,~<theQuery>~,theImagesID, theInfoType, theShootDescID ) != FALSE;
+
+	if (~<theImagesID>~ != ~~)
+	{
+		theOrderID = ~<theImagesID>~;
+
+		theQuery = ~Select InfoType, ShootDescID From Orders Where ID = '<theOrderID>'~;
+
+		Success = database(GetValuesFor,~<theQuery>~,theInfoType, theShootDescID ) != FALSE;
+	}
+
+	if ( ~<theShootDescID>~ != ~~)
+	{
+		theSubjectInfoOrderId = ~<theShootDescID>~;
+	}
+	else
+	{
+		theSubjectInfoOrderId = ~<theOrderID>~;
+	}
+
+	return <Success>;
+}
+
+
+NUMERIC  CreateProofOrderItems( OrderID,ProductID )
+{
+	if ( ~<ProductID>~ == ~~ )		{ return Failure( ~There was no product selected~ ); }
+	if ( ~<OrderID>~ == ~~ )		{ return Failure( ~There was no order selected~ ); }
+
+	BatchID = UniquePrintBatchID(); Now = Time();
+	PrintBatchSeq = ~0~;
+
+	Fields = STR ( BatchID,OrderID,ProductID,SubmitDate );
+	Values = STR ( '<BatchID>','<OrderID>','<ProductID>','<Now>' );
+
+	Cmd = STR ( Insert Into OrdersToProof(<Fields>) Values(<Values>) );
+
+	if ( !Ado( LocalDatabase,ConnectLocal,CMD,~<Cmd>~ ) )
+	{
+		LocalDatabase( GetErrorDescription,theErr );
+		return Failure( ~Error: <theErr>  <Cmd>~ );
+	}
+
+	if ( Defined( BackgroundOrderProcessor ) )
+	{
+		RemoteJobServer( BackgroundOrderProcessor,ProcessOrders,TRUE );
+
+		while ( TRUE )
+		{
+			UserMessage( ~Creating Proof Order Items for Batch '<BatchID>', Order '<OrderID>'~ );
+
+			Count = LocalDatabase( RecordCountFor,~Select * From OrdersToProof Where BatchID = '<BatchID>' AND OrderID = '<OrderID>'~ );
+			
+			if ( !<Count> )
+				break;
+
+			Sleep( 1000 );
+		}
+
+		UserMessage( ~Order Items for Batch '<BatchID>', Order '<OrderID>' were created~ );
+	}
+
+	return TRUE;
+}
+
+
+STR FixupPath(Path)        // ASSUMES THE BAD CHARACTERS ARE IN THE FILENAME ... NOT ONE OF THE DIRECTORIES 
+{ 
+	NewPath = ~<Path>~; 
+
+	MakePathSafe(NewPath);								// REMOVE THE UNWANTED CHARACTERS 
+
+	if ( !SimilarStr( ~<Path>~,~<NewPath>~ ) )			// DID THE PATH CHANGE? 
+	{ 
+		if ( !Files( RenameIndirect,Path,NewPath ) )	// RENAME THE FILE TO THE NEW NAME 
+		{
+   			Failure( ~FixupPath failed to rename <Path> to <NewPath>. <$func.GetLastErrorMsg()>~ ); 
+   			return ~<path>~;							// Gotta stick with the old path
+		} 
+	} 
+
+	return ~<NewPath>~; 
+}
+
+
+
+IF 0	// Do not used
+{
+	CEntry  NUMERIC  CopyAddThumbnail;
+
+	NUMERIC	CopyAndAddThumbnail( Src, Dst, Type, FRSize, SSSize, Resolution )
+	{
+		CopyAddThumbnail( ~"<Src>"~, ~"<Dst>"~, ~"<Type>"~, <FRSize>, <SSSize>, <Resolution> ) ;
+		return TRUE;
+	}
+
+
+	C:
+	{
+		//	CCopyAddThumbnail.cpp
+
+		char	*NULL ;
+		int		 FALSE = 0 ;
+		int		 TRUE  = ! FALSE ;
+
+		main()
+		{
+		}
+
+		CopyAddThumbnail( TCHAR *Src, TCHAR *Dst, TCHAR *OutputFileType, long FRSize, long SSSize, long Resolution )
+		{
+			int			 Status ;
+			ImageMem	*SrcImg = ReadImage( Src ) ;
+			
+			if( SrcImg == NULL )
+			{
+				SessionLogDirect( _T("Error %ld on ReadImage for %s"),errno(), Src );
+				return 0 ;
+			}
+
+			long	Width  = SrcImg->GetWidth() ;
+			long	Height = SrcImg->GetHeight() ;
+			long	Depth  = SrcImg->GetDepth() ;
+
+			long	LongestSide = Width ;
+			if( Height > LongestSide )
+				{ LongestSide = Height ; }
+
+			if( LongestSide > FRSize )
+			{
+				//	We need to resize the image.
+				SrcImg = ResizeImage( SrcImg, FRSize ) ;
+			}
+
+			if( stricmp( OutputFileType, _T("Jpeg")) == 0 )
+			{
+				if( Depth == 1 )
+				{
+					SrcImg = ConvertTo3Channels( SrcImg ) ;
+				}
+
+				WriteExifImage( SrcImg, Dst, SSSize ) ;
+			}
+			else
+			{
+				WriteTiffImage( SrcImg, Dst, SSSize ) ;
+			}
+
+			delete SrcImg ;
+			return(1) ;
+		}
+
+		ImageMem *ReadImage(TCHAR *FileName)
+		{
+			PIEReadImage	*theImgReader = new PIEReadImage ;
+			int Result = theImgReader->Init(FileName, 1L) ;
+			Result = theImgReader->DoOp(NULL,NULL,NULL) ;
+			ImageMem	*anImage = theImgReader->GetImage() ;
+			delete theImgReader ;
+			return( anImage ) ;
+		}
+
+		int WriteExifImage( ImageMem *theImage, TCHAR *SrcImageName, long SSSize )
+		{
+			int err;
+			long	SSQuality = 50L ;
+
+			//	GET FILE NAME TO WRITE
+			PIEExif *PExif = new PIEExif ;
+			int err = PExif->WriteExifFile( SrcImageName, theImage, SSSize ) ;
+	//		int err = PExif->WriteExifFile( SrcImageName, theImage, SSSize, SSQuality ) ;
+			delete PExif ;
+		
+			if ( !err )
+			{
+				SessionLogDirect( _T("Error %ld on WriteExifFile for %s"),errno(), SrcImageName );
+			}
+
+			return err;
+		}
+
+		int WriteTiffImage( ImageMem *theImage, TCHAR *SrcImageName, long SSSize )
+		{
+			int err;
+			long	SSWidth, SSHeight ;
+			long	Depth = theImage->GetDepth() ;
+			double	Ratio = GetSourceAspectRatio( theImage, SSSize, &SSWidth, &SSHeight ) ;
+
+			PIETiff *PTiff = new PIETiff ;
+			err = PTiff->WriteTiffFile( SrcImageName, theImage, 100.0, 100.0, SSWidth, SSHeight, Depth);
+
+			if ( !err )
+			{
+				SessionLogDirect( _T("Error %ld on WriteTiffFile for %s"),errno(), SrcImageName );
+			}
+
+			delete PTiff ;
+			return err;
+		}
+
+		ImageMem *ResizeImage( ImageMem *SrcImg, long Size )
+		{
+			long	Width = 0L ;
+			long	Height = 0L ;
+			long	Depth = SrcImg->GetDepth() ;
+			long	Status ;
+
+			GetSourceAspectRatio( SrcImg, Size, &Width, &Height ) ;
+			ImageMem	*SmallImg = NewImageMem( Width, Height, Depth, 8 ) ;
+			if( SmallImg )
+			{
+				PIEResize	*Resizer = new PIEResize ;
+				Status = Resizer->Init(SrcImg, NULL, SmallImg, _T("L") ) ;
+				Status = Resizer->DoOp(NULL,NULL) ;
+				if( Status == TRUE )
+				{
+					delete SrcImg ;
+					SrcImg = SmallImg ;
+				}
+				else
+				{
+					delete SmallImg ;
+				}
+			}
+			return( SrcImg ) ;
+		}
+
+
+		double GetSourceAspectRatio( ImageMem *theImage, long SSSize, long *SSWidth, long *SSHeight )
+		{
+			double	Width = theImage->GetWidth() ;
+			double	Lines = theImage->GetHeight() ;
+
+			double	Ratio ;
+
+			if( Width < Lines )
+			{
+				 Ratio = Width / Lines ;
+				*SSWidth = SSSize * Ratio ;
+				*SSHeight = SSSize ;
+			}
+			else
+			{
+				 Ratio = Lines / Width  ;
+				*SSWidth = SSSize ;
+				*SSHeight = SSSize * Ratio ;
+			}
+
+			return( Ratio ) ;
+		}
+
+		ImageMem *ConvertTo3Channels( ImageMem *SrcImg )
+		{
+			//	WE NEED TO CONVERT TO 3 CHANNELS !
+			int	Width = SrcImg->GetWidth() ;
+			int	Lines = SrcImg->GetHeight() ;
+			ImageMem	*NewSrc = NewImageMem(Width, Lines, 3L, 8 ) ;
+			if( NewSrc )
+			{
+				PIEChannelConvert	*Converter = new PIEChannelConvert ;
+				Converter->Init( SrcImg, NewSrc ) ;
+				Converter->DoOp(NULL,NULL,NULL) ;
+				delete Converter ;
+				delete SrcImg ;
+				SrcImg = NewSrc ;
+			}
+			return( SrcImg ) ;
+		}
+
+	}
+}
+
+// ADDS/UPDATES WORKFLOWS IN THE WORKFLOWS TABLE
+NUMERIC UpdateWorkflow( Workflow,<OptionalFieldValueArgs> )
+{
+	Query = ~Select * From Workflows Where Workflow = '<Workflow>'~;
+
+	if ( !PGenConList( List,Connection,database,Cursor,Keyset,Query,~<Query>~ ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,QueryFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	if ( !List( GetFirst,Record ) )
+	{
+		List( AddNew,Record );
+
+		Record( Set,ID,~<ID>~ );
+	}
+
+	num = 0;
+
+	while ( DefinedAndNotNull( p<++num> ) )
+	{
+		Record( Set,~<p<num>>~,~<v<num>>~ );
+	}
+
+	if ( !List( Update ) )
+	{
+		List( GetErrorDescription,0,theErr );
+		return Failure( Translate( DBMessages,UpdateFailed,~<Query>~,~<theErr>~ ) );
+	}
+
+	return TRUE;
+}
+
+
+// Include: ~MigrateImage~;
+
+OptionalInclude(~<$App.ShareDirectory>\Scripts\MyLateCmds.txt~); 
+

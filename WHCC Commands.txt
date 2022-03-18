@@ -1,0 +1,78 @@
+Include: Cmds;
+
+NUMERIC RenameOrder( OrderID,NewOrderID )	
+{
+	database( CMD,~Insert into Orders (ID,CustomerID,InfoType,CustomerOrderID,OrderName,BatchSeq,Status,CameraFileConversionStatus,RunCount,OrderSource,OrderDate,Priority,dPref,rPref,gPref,bPref,ContrastPref,SaturationPref,SharpenPref,GammaPref,Copyright) select '<NewOrderID>',CustomerID,InfoType,CustomerOrderID,OrderName,BatchSeq,Status,CameraFileConversionStatus,RunCount,OrderSource,OrderDate,Priority,dPref,rPref,gPref,bPref,ContrastPref,SaturationPref,SharpenPref,GammaPref,Copyright from Orders where ID = '<OrderID>'~ );
+	
+	database( CMD,~Update ImagesServices set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update OrderItemsServices set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update OrderServices set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+
+	database( CMD,~Update ProSeriesImagesXref set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update WorkInProgress set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+
+	database( CMD,~Update ImageCorrections set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update Images set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update Retouch set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update RetouchImages set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update SBAImages set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update DSBAImages set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update ImageSorterSummary set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update OrderItemImages set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update CompSbaData set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	
+	database( CMD,~Update OrderNotifications set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+
+	database( CMD,~Update OrderItemImages set ItemOrderID = '<NewOrderID>' Where ItemOrderID = '<OrderID>'~ );
+	database( CMD,~Update RawImages set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update DCImageProperties set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update DCQueue set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update KparsData set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+
+	database( CMD,~Update Rolls set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update OrderItems set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+
+	database( CMD,~Update OrderDlvrbl set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update Composite set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update NodeDetails set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update CropServices set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update BremsonScanList set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update ProductXRef set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update Tracking set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update EndUserInfo set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	
+	database( CMD,~Update Books set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update BookAttributes set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update BookDescription set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update JobQueue set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+	database( CMD,~Update SubjectInfoEvents set OrderID = '<NewOrderID>' Where OrderID = '<OrderID>'~ );
+
+	database( CMD,~Delete From Orders Where ID = '<OrderID>'~ );
+	
+	return Success( Translate( ~Renamed Order <OrderID> to <NewOrderID>~ ) );
+}
+
+NUMERIC AddNotificationToOrder( OrderID,NotificationText )	
+{
+	ReplaceMany( ~<NotificationText>~,~'~,~~,NotificationTextStrip );
+	database( CMD,~insert into OrderNotifications (OrderID,NotifyText) values ('<OrderID>','<NotificationTextStrip>')~ );
+	return Success( Translate( ~Notification Added to <OrderID>~ ) );
+}
+
+NUMERIC MarkAllImagesAdjust( OrderID )	
+{
+	database( CMD,~Update Images set Inspect = 1 Where OrderID = '<OrderID>'~ );
+	return Success( Translate( ~All Images for <OrderID> marked for Adjust~ ) );
+}
+
+NUMERIC SetPrintBatchHold()
+{
+	Cmd = STR ( Update JobQueue Set PrintStatus = 0 Where BatchID = '<PrintBatchID>' AND PrintStatus = 88);
+
+	if ( !database( CMD,~<Cmd>~ ) )
+	{
+		database( GetErrorDescription,theErr );
+		return Failure( Translate( ~Error setting Batch <PrintBatchID> to Hold: <theErr>  <Cmd>~ ) );
+	}
+	return Success(~Batch <PrintBatchID> Set to Hold~);
+}
